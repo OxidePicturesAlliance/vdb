@@ -73,8 +73,8 @@ is `--threads 1` (3 repetitions). Ratios above 1 mean Rust is slower.
 | `read_blosc` | 49.05 | 46.39 | 0.95x | 48.58 | 46.60 | 0.96x |
 | `csg_union` | 11.99 | 31.90 | 2.66x | 25.16 | 32.70 | 1.30x |
 | `csg_difference` | 11.52 | 29.70 | 2.58x | 24.98 | 28.27 | 1.13x |
-| `dilate_3` | 38.69 | 191.90 | 4.96x | 95.78 | 421.96 | 4.41x |
-| `erode_3` | 9.54 | 75.92 | 7.96x | 29.06 | 199.61 | 6.87x |
+| `dilate_3` | 40.13 | 30.36 | 0.76x | 96.76 | 61.39 | 0.63x |
+| `erode_3` | 9.52 | 12.45 | 1.31x | 24.52 | 21.96 | 0.90x |
 | `signed_flood_fill` | 8.11 | 10.47 | 1.29x | 26.19 | 26.53 | 1.01x |
 | `filter_gaussian` | 384.85 | 676.43 | 1.76x | 1238.32 | 2276.73 | 1.84x |
 | `filter_median` | 378.38 | 431.69 | 1.14x | 1241.05 | 1462.93 | 1.18x |
@@ -108,8 +108,8 @@ uses `flate2`'s default backend (miniz_oxide), so the compressed sizes are not e
   grid operators (`gradient`, `laplacian`, `mean_curvature`), `signed_flood_fill`, `csg_*`
   and `mesh_to_level_set` (single-threaded), and `iterate_active`. Zip writing is 1.7–2.5×
   faster than C++.
-- **Morphology** is the largest algorithmic gap: `dilate_3` is 4.4× and `erode_3` 6.9×
-  slower single-threaded (5–8× with threads).
+- **Morphology:** `dilate_3` is faster than C++ and `erode_3` is on par single-threaded
+  (1.3× with threads, where both take ~10 ms).
 - **Scaling with threads:** `csg_*` (2.6× vs 1.1–1.3× on one thread), `particles_to_sdf`
   (Rust does not speed up from 1 to 4 threads, while C++ goes from 728 to 320 ms),
   `grid_copy`, the point grids and `active_voxel_count` fall behind once threads are enabled.
@@ -118,6 +118,12 @@ uses `flate2`'s default backend (miniz_oxide), so the compressed sizes are not e
 
 ### History
 
+- **Morphology:** dilation and erosion now work directly on the 64-bit active-mask words of
+  each leaf and its 6 / 18 / 26 neighbor leaves (shifting and masking words for the z, y
+  and x neighbors), instead of copying them into a 24³ scratch volume per leaf. Erosion
+  skips neighbors that don't share active border voxels with the leaf. Single-threaded,
+  `dilate_3` went from 422 to 61 ms and `erode_3` from 200 to 22 ms (192 → 30 ms and
+  76 → 12 ms with 4 threads). The `dilate_3` / `erode_3` rows above are from this change.
 - **Read path (I/O):** leaf buffers are now decoded straight from the (decompressed) bytes
   into the leaf, using per-thread reusable buffers and zlib state, instead of going through
   three temporary vectors per node; Blosc unshuffling is specialized for 4- and 8-byte

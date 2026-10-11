@@ -1,7 +1,7 @@
 //! Topological dilation and erosion of active values (port of `openvdb/tools/Morphology.h`).
 //!
-//! Dilation and erosion operate on the active masks of leaf nodes, 8×8×8 voxels at a time
-//! using 64-bit word operations, with face (6), face-edge (18) or face-edge-vertex (26)
+//! Dilation and erosion operate directly on the 64-bit words of the leaf active masks (and
+//! those of their neighbor leaves), with face (6), face-edge (18) or face-edge-vertex (26)
 //! connectivity. Voxel values are never changed; newly activated voxels keep the value
 //! they had (the value of the tile or background they were created from).
 
@@ -11,7 +11,6 @@ use crate::tools::tree_ops::{has_active_tiles, topology_intersection, topology_u
 use crate::tools::value_traits::ToolValue;
 use crate::tree::{LeafNode, Node, Tree};
 use rayon::prelude::*;
-use std::collections::HashMap;
 
 /// Voxel neighborhoods used by dilation and erosion (OpenVDB's `NearestNeighbors`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -40,216 +39,227 @@ pub enum TilePolicy {
     PreserveTiles,
 }
 
-/// The 8 words (one per x slab; byte y holds the z row) of a leaf's active mask.
+/// The 8 words of a leaf's active mask: word `x` holds the 8×8 `(y, z)` slab at that x,
+/// byte `y` of a word holds the z row and bit `z` of that byte the voxel.
 type Words = [u64; 8];
 
-/// A 24³ bit volume (3×3×3 leaves), stored as z rows of 24 bits indexed by `[x][y]`.
-#[derive(Clone)]
-struct Local {
-    rows: Box<[[u32; 24]; 24]>,
+static EMPTY: Words = [0; 8];
+static FULL: Words = [!0; 8];
+
+/// Bit `z = 0` / `z = 7` of every z row.
+const Z_LO: u64 = 0x0101_0101_0101_0101;
+const Z_HI: u64 = 0x8080_8080_8080_8080;
+/// Byte `y = 0` / `y = 7` of a word.
+const Y_LO: u64 = 0xFF;
+const Y_HI: u64 = 0xFF << 56;
+
+/// Union (dilation, `DILATE = true`) or intersection (erosion) of three words.
+#[inline(always)]
+fn combine<const DILATE: bool>(a: u64, b: u64, c: u64) -> u64 {
+    if DILATE {
+        a | b | c
+    } else {
+        a & b & c
+    }
 }
 
-const ROW_MASK: u32 = 0x00FF_FFFF;
+/// `c` combined with its copies shifted by ±1 voxel along z; `m` / `p` are the masks of the
+/// −z / +z neighbor leaves.
+#[inline(always)]
+fn along_z<const DILATE: bool>(c: &Words, m: &Words, p: &Words) -> Words {
+    std::array::from_fn(|i| {
+        let below = ((c[i] << 1) & !Z_LO) | ((m[i] >> 7) & Z_LO); // voxel at z − 1
+        let above = ((c[i] >> 1) & !Z_HI) | ((p[i] << 7) & Z_HI); // voxel at z + 1
+        combine::<DILATE>(c[i], below, above)
+    })
+}
 
-impl Local {
-    fn new() -> Self {
-        Local { rows: Box::new([[0u32; 24]; 24]) }
-    }
-    /// Store the words of the leaf at block offset `(bx, by, bz)` (each in 0..3).
-    fn set_block(&mut self, b: [usize; 3], w: &Words) {
-        for x in 0..8 {
-            for y in 0..8 {
-                let byte = ((w[x] >> (8 * y)) & 0xFF) as u32;
-                let r = &mut self.rows[8 * b[0] + x][8 * b[1] + y];
-                *r = (*r & !(0xFF << (8 * b[2]))) | (byte << (8 * b[2]));
-            }
-        }
-    }
-    fn fill_block(&mut self, b: [usize; 3]) {
-        self.set_block(b, &[!0u64; 8]);
-    }
-    fn block(&self, b: [usize; 3]) -> Words {
-        let mut w = [0u64; 8];
-        for (x, wx) in w.iter_mut().enumerate() {
-            for y in 0..8 {
-                let byte = ((self.rows[8 * b[0] + x][8 * b[1] + y] >> (8 * b[2])) & 0xFF) as u64;
-                *wx |= byte << (8 * y);
-            }
-        }
-        w
-    }
-    fn is_block_empty(&self, b: [usize; 3]) -> bool {
-        (0..8).all(|x| (0..8).all(|y| (self.rows[8 * b[0] + x][8 * b[1] + y] >> (8 * b[2])) & 0xFF == 0))
-    }
-    fn map_rows(&self, f: impl Fn(u32) -> u32) -> Local {
-        let mut out = self.clone();
-        for row in out.rows.iter_mut() {
-            for r in row.iter_mut() {
-                *r = f(*r) & ROW_MASK;
-            }
-        }
-        out
-    }
-    /// Combine each row with its neighbors along y (`axis == 1`) or x (`axis == 0`).
-    fn combine_axis(&self, axis: usize, f: impl Fn(u32, u32, u32) -> u32) -> Local {
-        let mut out = Local::new();
-        for x in 0..24 {
-            for y in 0..24 {
-                let get = |dx: i32, dy: i32| -> u32 {
-                    let (xx, yy) = (x as i32 + dx, y as i32 + dy);
-                    if (0..24).contains(&xx) && (0..24).contains(&yy) {
-                        self.rows[xx as usize][yy as usize]
-                    } else {
-                        0
-                    }
-                };
-                let (m, p) = if axis == 0 { (get(-1, 0), get(1, 0)) } else { (get(0, -1), get(0, 1)) };
-                out.rows[x][y] = f(m, self.rows[x][y], p) & ROW_MASK;
-            }
-        }
-        out
-    }
-    fn or(&self, o: &Local) -> Local {
-        let mut out = self.clone();
-        for x in 0..24 {
-            for y in 0..24 {
-                out.rows[x][y] |= o.rows[x][y];
-            }
-        }
-        out
-    }
-    fn and(&self, o: &Local) -> Local {
-        let mut out = self.clone();
-        for x in 0..24 {
-            for y in 0..24 {
-                out.rows[x][y] &= o.rows[x][y];
-            }
-        }
-        out
-    }
+/// As [`along_z`], along y.
+#[inline(always)]
+fn along_y<const DILATE: bool>(c: &Words, m: &Words, p: &Words) -> Words {
+    std::array::from_fn(|i| combine::<DILATE>(c[i], (c[i] << 8) | (m[i] >> 56), (c[i] >> 8) | (p[i] << 56)))
+}
 
-    // Dilation (max filters).
-    fn box_z(&self) -> Local {
-        self.map_rows(|r| r | (r << 1) | (r >> 1))
-    }
-    fn box_y(&self) -> Local {
-        self.combine_axis(1, |m, c, p| m | c | p)
-    }
-    fn box_x(&self) -> Local {
-        self.combine_axis(0, |m, c, p| m | c | p)
-    }
-    fn dilate(&self, nn: NearestNeighbors) -> Local {
-        match nn {
-            NearestNeighbors::Face => {
-                let z = self.box_z();
-                let y = self.combine_axis(1, |m, _, p| m | p);
-                let x = self.combine_axis(0, |m, _, p| m | p);
-                z.or(&y).or(&x)
-            }
-            NearestNeighbors::FaceEdge => {
-                let xy = self.box_y().box_x();
-                let xz = self.box_z().box_x();
-                let yz = self.box_z().box_y();
-                xy.or(&xz).or(&yz)
-            }
-            NearestNeighbors::FaceEdgeVertex => self.box_z().box_y().box_x(),
-        }
-    }
+/// As [`along_z`], along x.
+#[inline(always)]
+fn along_x<const DILATE: bool>(c: &Words, m: &Words, p: &Words) -> Words {
+    std::array::from_fn(|i| {
+        let below = if i == 0 { m[7] } else { c[i - 1] };
+        let above = if i == 7 { p[0] } else { c[i + 1] };
+        combine::<DILATE>(c[i], below, above)
+    })
+}
 
-    // Erosion (min filters).
-    fn min_z(&self) -> Local {
-        self.map_rows(|r| r & (r << 1) & (r >> 1))
-    }
-    fn min_y(&self) -> Local {
-        self.combine_axis(1, |m, c, p| m & c & p)
-    }
-    fn min_x(&self) -> Local {
-        self.combine_axis(0, |m, c, p| m & c & p)
-    }
-    fn erode(&self, nn: NearestNeighbors) -> Local {
-        match nn {
-            NearestNeighbors::Face => {
-                let z = self.min_z();
-                let y = self.combine_axis(1, |m, c, p| m & c & p);
-                let x = self.combine_axis(0, |m, c, p| m & c & p);
-                z.and(&y).and(&x)
-            }
-            NearestNeighbors::FaceEdge => {
-                let xy = self.min_y().min_x();
-                let xz = self.min_z().min_x();
-                let yz = self.min_z().min_y();
-                xy.and(&xz).and(&yz)
-            }
-            NearestNeighbors::FaceEdgeVertex => self.min_z().min_y().min_x(),
+#[inline(always)]
+fn combine_words<const DILATE: bool>(a: &Words, b: &Words, c: &Words) -> Words {
+    std::array::from_fn(|i| combine::<DILATE>(a[i], b[i], c[i]))
+}
+
+/// Index of the neighbor at offset `(dx, dy, dz)` (each in −1..=1) in a 3×3×3 neighborhood.
+const fn nb(dx: i32, dy: i32, dz: i32) -> usize {
+    ((dx + 1) * 9 + (dy + 1) * 3 + (dz + 1)) as usize
+}
+
+/// The neighbor offsets (excluding the center) used by `nn`.
+fn stencil(nn: NearestNeighbors) -> impl Iterator<Item = [i32; 3]> {
+    let max_nonzero = match nn {
+        NearestNeighbors::Face => 1,
+        NearestNeighbors::FaceEdge => 2,
+        NearestNeighbors::FaceEdgeVertex => 3,
+    };
+    (0..27).map(|i| [i / 9 - 1, (i / 3) % 3 - 1, i % 3 - 1]).filter(move |d| {
+        let k = d.iter().filter(|&&c| c != 0).count();
+        k > 0 && k <= max_nonzero
+    })
+}
+
+/// Dilate (`DILATE = true`) or erode the center leaf mask of a neighborhood `n`
+/// (indexed by [`nb`]; only the entries in [`stencil`]`(nn)` are read).
+#[inline(always)]
+fn filter<const DILATE: bool>(nn: NearestNeighbors, n: &[&Words; 27]) -> Words {
+    let at = |dx, dy, dz| n[nb(dx, dy, dz)];
+    let z_col = |dx, dy| along_z::<DILATE>(at(dx, dy, 0), at(dx, dy, -1), at(dx, dy, 1));
+    match nn {
+        NearestNeighbors::Face => {
+            let c = at(0, 0, 0);
+            let z = along_z::<DILATE>(c, at(0, 0, -1), at(0, 0, 1));
+            let y = along_y::<DILATE>(c, at(0, -1, 0), at(0, 1, 0));
+            let x = along_x::<DILATE>(c, at(-1, 0, 0), at(1, 0, 0));
+            combine_words::<DILATE>(&z, &y, &x)
+        }
+        NearestNeighbors::FaceEdge => {
+            // Union (intersection) of the 3×3 squares in the xy, xz and yz planes.
+            let z0 = z_col(0, 0);
+            let yz = along_y::<DILATE>(&z0, &z_col(0, -1), &z_col(0, 1));
+            let xz = along_x::<DILATE>(&z0, &z_col(-1, 0), &z_col(1, 0));
+            let y_row = |dx| along_y::<DILATE>(at(dx, 0, 0), at(dx, -1, 0), at(dx, 1, 0));
+            let xy = along_x::<DILATE>(&y_row(0), &y_row(-1), &y_row(1));
+            combine_words::<DILATE>(&yz, &xz, &xy)
+        }
+        NearestNeighbors::FaceEdgeVertex => {
+            let y_slab = |dx| along_y::<DILATE>(&z_col(dx, 0), &z_col(dx, -1), &z_col(dx, 1));
+            along_x::<DILATE>(&y_slab(0), &y_slab(-1), &y_slab(1))
         }
     }
 }
 
-fn leaf_words<T: crate::types::Value>(leaf: &LeafNode<T>) -> Words {
-    let mut w = [0u64; 8];
-    w.copy_from_slice(leaf.value_mask().words());
-    w
+fn leaf_words<T: crate::types::Value>(leaf: &LeafNode<T>) -> &Words {
+    leaf.value_mask().words().try_into().expect("leaf masks have 8 words")
 }
 
-const BLOCKS: [[i32; 3]; 27] = {
-    let mut b = [[0i32; 3]; 27];
-    let mut i = 0;
-    while i < 27 {
-        b[i] = [(i / 9) as i32 - 1, ((i / 3) % 3) as i32 - 1, (i % 3) as i32 - 1];
-        i += 1;
+/// Whether `w` has active voxels on the face, edge or corner shared with the neighbor leaf at
+/// offset `d` (i.e. whether dilating `w` spills into that neighbor).
+fn touches(w: &Words, d: [i32; 3]) -> bool {
+    let words: &[u64] = match d[0] {
+        -1 => &w[..1],
+        1 => &w[7..],
+        _ => &w[..],
+    };
+    let y = match d[1] {
+        -1 => Y_LO,
+        1 => Y_HI,
+        _ => !0,
+    };
+    let z = match d[2] {
+        -1 => Z_LO,
+        1 => Z_HI,
+        _ => !0,
+    };
+    words.iter().fold(0, |a, w| a | w) & y & z != 0
+}
+
+/// Compute the dilated (`DILATE = true`) or eroded mask of every leaf of `tree`, in leaf
+/// order, from the current masks. Missing neighbors count as empty, or for erosion as full
+/// when they lie in an active tile.
+fn filter_leaves<T: ToolValue, const DILATE: bool>(tree: &Tree<T>, nn: NearestNeighbors, threaded: bool) -> Vec<Words> {
+    let offsets: Vec<[i32; 3]> = stencil(nn).collect();
+    let one = |acc: &mut crate::tree::ValueAccessor<'_, _>, leaf: &LeafNode<T>| -> Words {
+        let center = leaf_words(leaf);
+        if !DILATE && center.iter().all(|w| *w == 0) {
+            return EMPTY;
+        }
+        let origin = leaf.origin();
+        let mut n: [&Words; 27] = [&EMPTY; 27];
+        n[nb(0, 0, 0)] = center;
+        for &d in &offsets {
+            if !DILATE && !touches(center, d) {
+                continue; // the neighbor only affects border voxels that are inactive anyway
+            }
+            let o = origin.offset_by(8 * d[0], 8 * d[1], 8 * d[2]);
+            if let Some(l) = acc.probe_leaf(&o) {
+                n[nb(d[0], d[1], d[2])] = leaf_words(l);
+            } else if !DILATE && acc.is_value_on(&o) {
+                n[nb(d[0], d[1], d[2])] = &FULL;
+            }
+        }
+        filter::<DILATE>(nn, &n)
+    };
+    let leaves = tree.leaf_refs();
+    if threaded {
+        leaves.par_iter().map_init(|| tree.accessor(), |acc, l| one(acc, l)).collect()
+    } else {
+        let mut acc = tree.accessor();
+        leaves.iter().map(|l| one(&mut acc, l)).collect()
     }
-    b
-};
+}
+
+/// Replace the masks of all leaves of `tree` (in leaf order) with `masks`.
+fn store_masks<T: ToolValue>(tree: &mut Tree<T>, masks: Vec<Words>, threaded: bool) {
+    let store = |(leaf, w): (&mut LeafNode<T>, &Words)| leaf.value_mask_mut().words_mut().copy_from_slice(w);
+    if threaded {
+        tree.leaf_refs_mut().into_par_iter().zip(masks.par_iter()).for_each(store);
+    } else {
+        tree.leaves_mut().zip(masks.iter()).for_each(store);
+    }
+}
 
 /// Topologically dilate the active voxels of all leaf nodes `iterations` times
 /// (`Morphology::dilateVoxels`). Active tiles neither dilate nor receive dilation (they are
 /// already active); new leaves are created as needed from the surrounding tile values.
 pub fn dilate_voxels<T: ToolValue>(tree: &mut Tree<T>, iterations: usize, nn: NearestNeighbors, threaded: bool) {
+    let offsets: Vec<[i32; 3]> = stencil(nn).collect();
     for _ in 0..iterations {
-        let sources: Vec<(Coord, Words)> = tree.leaves().map(|l| (l.origin(), leaf_words(l))).collect();
-        if sources.is_empty() {
+        if tree.leaf_count() == 0 {
             return;
         }
-        let dilate_one = |&(origin, words): &(Coord, Words)| -> Vec<(Coord, Words)> {
-            if words.iter().all(|w| *w == 0) {
-                return Vec::new();
-            }
-            let mut local = Local::new();
-            local.set_block([1, 1, 1], &words);
-            let d = local.dilate(nn);
-            let mut out = Vec::with_capacity(27);
-            for b in BLOCKS {
-                let bi = [(b[0] + 1) as usize, (b[1] + 1) as usize, (b[2] + 1) as usize];
-                if !d.is_block_empty(bi) {
-                    out.push((origin.offset_by(8 * b[0], 8 * b[1], 8 * b[2]), d.block(bi)));
+        // Create the (empty) leaves that receive voxels from their neighbors.
+        let missing: Vec<Coord> = {
+            let t = &*tree;
+            let one = |acc: &mut crate::tree::ValueAccessor<'_, _>, leaf: &LeafNode<T>| -> Vec<Coord> {
+                let w = leaf_words(leaf);
+                let mut out = Vec::new();
+                if w.iter().all(|w| *w == 0) {
+                    return out;
                 }
-            }
-            out
+                for &d in &offsets {
+                    if touches(w, d) {
+                        let o = leaf.origin().offset_by(8 * d[0], 8 * d[1], 8 * d[2]);
+                        if acc.probe_leaf(&o).is_none() {
+                            out.push(o);
+                        }
+                    }
+                }
+                out
+            };
+            let leaves = t.leaf_refs();
+            let mut missing: Vec<Coord> = if threaded {
+                leaves.par_iter().map_init(|| t.accessor(), |acc, l| one(acc, l)).flatten().collect()
+            } else {
+                let mut acc = t.accessor();
+                leaves.iter().flat_map(|l| one(&mut acc, l)).collect()
+            };
+            missing.sort_unstable();
+            missing.dedup();
+            missing
         };
-        let parts: Vec<Vec<(Coord, Words)>> = if threaded {
-            sources.par_iter().map(dilate_one).collect()
-        } else {
-            sources.iter().map(dilate_one).collect()
-        };
-        let mut acc: HashMap<Coord, Words> = HashMap::new();
-        for (o, w) in parts.into_iter().flatten() {
-            let e = acc.entry(o).or_insert([0u64; 8]);
-            for i in 0..8 {
-                e[i] |= w[i];
-            }
-        }
-        let mut targets: Vec<(Coord, Words)> = acc.into_iter().collect();
-        targets.sort_by_key(|(o, _)| *o);
         let mut accessor = tree.accessor_mut();
-        for (o, w) in targets {
-            if accessor.probe_leaf(&o).is_none() && accessor.is_value_on(&o) {
-                continue; // inside an active tile
-            }
-            let leaf = accessor.touch_leaf(&o);
-            for (dst, src) in leaf.value_mask_mut().words_mut().iter_mut().zip(w.iter()) {
-                *dst |= *src;
+        for o in missing {
+            if !accessor.is_value_on(&o) {
+                accessor.touch_leaf(&o); // otherwise inside an active tile
             }
         }
+        let masks = filter_leaves::<T, true>(tree, nn, threaded);
+        store_masks(tree, masks, threaded);
     }
 }
 
@@ -262,41 +272,8 @@ pub fn erode_voxels<T: ToolValue>(tree: &mut Tree<T>, iterations: usize, nn: Nea
         return;
     }
     for _ in 0..iterations {
-        let new_masks: Vec<(Coord, Words)> = {
-            let t = &*tree;
-            let erode_one = |leaf: &LeafNode<T>| -> (Coord, Words) {
-                let origin = leaf.origin();
-                let words = leaf_words(leaf);
-                if words.iter().all(|w| *w == 0) {
-                    return (origin, words);
-                }
-                let acc = t.accessor();
-                let mut local = Local::new();
-                for b in BLOCKS {
-                    let bi = [(b[0] + 1) as usize, (b[1] + 1) as usize, (b[2] + 1) as usize];
-                    if b == [0, 0, 0] {
-                        local.set_block(bi, &words);
-                        continue;
-                    }
-                    let o = origin.offset_by(8 * b[0], 8 * b[1], 8 * b[2]);
-                    if let Some(n) = acc.probe_leaf(&o) {
-                        local.set_block(bi, &leaf_words(n));
-                    } else if acc.is_value_on(&o) {
-                        local.fill_block(bi);
-                    }
-                }
-                (origin, local.erode(nn).block([1, 1, 1]))
-            };
-            let leaves = tree.leaf_refs();
-            if threaded {
-                leaves.par_iter().map(|l| erode_one(l)).collect()
-            } else {
-                leaves.iter().map(|l| erode_one(l)).collect()
-            }
-        };
-        for (leaf, (_, w)) in tree.leaves_mut().zip(new_masks) {
-            leaf.value_mask_mut().words_mut().copy_from_slice(&w);
-        }
+        let masks = filter_leaves::<T, false>(tree, nn, threaded);
+        store_masks(tree, masks, threaded);
     }
 }
 
@@ -389,6 +366,53 @@ mod tests {
         dilate_active_values(&mut tree, 3, NearestNeighbors::Face, TilePolicy::PreserveTiles, false);
         // Octahedron of radius 3: 1 + 6 + 18 + 38 = 63 voxels.
         assert_eq!(tree.active_voxel_count(), 63);
+    }
+
+    /// Compare against a voxel-by-voxel evaluation on a dense random block of voxels spanning leaf borders.
+    #[test]
+    fn matches_brute_force() {
+        use std::collections::HashSet;
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut tree = FloatTree::new(0.0);
+        for x in -20..20 {
+            for y in -20..20 {
+                for z in -20..20 {
+                    if next() % 8 != 0 {
+                        tree.set_value(&Coord::new(x, y, z), 1.0);
+                    }
+                }
+            }
+        }
+        for nn in [NearestNeighbors::Face, NearestNeighbors::FaceEdge, NearestNeighbors::FaceEdgeVertex] {
+            let max_nonzero = match nn {
+                NearestNeighbors::Face => 1,
+                NearestNeighbors::FaceEdge => 2,
+                NearestNeighbors::FaceEdgeVertex => 3,
+            };
+            let offsets: Vec<Coord> = (-1..=1)
+                .flat_map(|x| (-1..=1).flat_map(move |y| (-1..=1).map(move |z| Coord::new(x, y, z))))
+                .filter(|d| [d.x(), d.y(), d.z()].iter().filter(|&&c| c != 0).count() <= max_nonzero)
+                .collect();
+            let active: HashSet<Coord> = tree.active_voxels().map(|(c, _)| c).collect();
+            let dilated: HashSet<Coord> = active.iter().flat_map(|c| offsets.iter().map(move |d| *c + *d)).collect();
+            let eroded: HashSet<Coord> =
+                active.iter().filter(|c| offsets.iter().all(|d| active.contains(&(**c + *d)))).copied().collect();
+            assert!(!eroded.is_empty());
+            for threaded in [false, true] {
+                let mut d = tree.clone();
+                dilate_voxels(&mut d, 1, nn, threaded);
+                assert_eq!(d.active_voxels().map(|(c, _)| c).collect::<HashSet<_>>(), dilated, "dilate {nn:?}");
+                let mut e = tree.clone();
+                erode_voxels(&mut e, 1, nn, threaded);
+                assert_eq!(e.active_voxels().map(|(c, _)| c).collect::<HashSet<_>>(), eroded, "erode {nn:?}");
+            }
+        }
     }
 
     #[test]
