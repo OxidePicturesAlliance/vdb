@@ -147,6 +147,7 @@ impl AttributeArray {
 
     /// Build an array from raw parts (used by file I/O). `data` must hold one element if
     /// `uniform`, else `data_size()` elements.
+    #[cfg(feature = "read")]
     pub(crate) fn from_raw(
         ty: AttributeType,
         size: u32,
@@ -251,6 +252,7 @@ impl AttributeArray {
         }
     }
     /// The raw stride-or-total-size field.
+    #[cfg(feature = "write")]
     pub(crate) fn stride_or_total_size(&self) -> u32 {
         self.stride_or_total
     }

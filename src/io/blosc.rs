@@ -25,7 +25,10 @@
 //! Decompression supports the BloscLZ, LZ4 (and LZ4HC) and zlib codecs, byte shuffling,
 //! split and unsplit blocks, multiple blocks and memcpy'd frames. Compression always emits
 //! a single LZ4 block, matching what OpenVDB writes.
+//!
+//! Decompression requires the `read` feature and compression the `write` feature.
 
+#[cfg(feature = "read")]
 use super::error::{Error, Result};
 
 /// Size of a Blosc 1.x header; also the maximum overhead of a compressed frame.
@@ -34,27 +37,34 @@ pub const MAX_OVERHEAD: usize = 16;
 const MIN_BUFFERSIZE: usize = 128;
 const MAX_SPLITS: usize = 16;
 const FORMAT_VERSION: u8 = 2;
+#[cfg(feature = "write")]
 const LZ4_VERSION_FORMAT: u8 = 1;
 
 const DOSHUFFLE: u8 = 0x1;
 const MEMCPYED: u8 = 0x2;
+#[cfg(feature = "read")]
 const DOBITSHUFFLE: u8 = 0x4;
 const NOSPLIT: u8 = 0x10;
 
+#[cfg(feature = "read")]
 const CODEC_BLOSCLZ: u8 = 0;
 const CODEC_LZ4: u8 = 1;
+#[cfg(feature = "read")]
 const CODEC_ZLIB: u8 = 3;
 
+#[cfg(feature = "read")]
 fn err(msg: impl Into<String>) -> Error {
     Error::Blosc(msg.into())
 }
 
+#[cfg(feature = "read")]
 #[inline]
 fn u32_at(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
 }
 
 /// The uncompressed size recorded in a Blosc frame header.
+#[cfg(feature = "read")]
 pub fn decompressed_size(src: &[u8]) -> Result<usize> {
     if src.len() < MAX_OVERHEAD {
         return Err(err("frame shorter than its header"));
@@ -63,6 +73,7 @@ pub fn decompressed_size(src: &[u8]) -> Result<usize> {
 }
 
 /// Decompress a Blosc 1.x frame.
+#[cfg(feature = "read")]
 pub fn decompress(src: &[u8]) -> Result<Vec<u8>> {
     let mut dest = vec![0u8; decompressed_size(src)?];
     decompress_into(src, &mut dest)?;
@@ -71,6 +82,7 @@ pub fn decompress(src: &[u8]) -> Result<Vec<u8>> {
 
 /// Decompress a Blosc 1.x frame into `dest`, whose length must equal the frame's
 /// uncompressed size.
+#[cfg(feature = "read")]
 pub fn decompress_into(src: &[u8], dest: &mut [u8]) -> Result<()> {
     let nbytes = decompressed_size(src)?;
     if nbytes != dest.len() {
@@ -170,6 +182,7 @@ pub fn decompress_into(src: &[u8], dest: &mut [u8]) -> Result<()> {
 
 /// Compress `src` into a Blosc frame as OpenVDB does: byte shuffle with the given type
 /// size, LZ4, and a single block. Small or incompressible inputs produce a memcpy'd frame.
+#[cfg(feature = "write")]
 pub fn compress(src: &[u8], typesize: usize) -> Vec<u8> {
     let nbytes = src.len();
     let mut typesize = typesize.clamp(1, 255);
@@ -227,6 +240,7 @@ pub fn compress(src: &[u8], typesize: usize) -> Vec<u8> {
 }
 
 /// Byte shuffle: gather byte `j` of every element into a contiguous run.
+#[cfg(feature = "write")]
 fn shuffle(typesize: usize, src: &[u8], dest: &mut [u8]) {
     let n = src.len() / typesize;
     for i in 0..n {
@@ -239,6 +253,7 @@ fn shuffle(typesize: usize, src: &[u8], dest: &mut [u8]) {
 }
 
 /// Inverse of [`shuffle`].
+#[cfg(feature = "read")]
 fn unshuffle(typesize: usize, src: &[u8], dest: &mut [u8]) {
     match typesize {
         4 => unshuffle_n::<4>(src, dest),
@@ -248,6 +263,7 @@ fn unshuffle(typesize: usize, src: &[u8], dest: &mut [u8]) {
 }
 
 /// [`unshuffle`] for a type size known at compile time.
+#[cfg(feature = "read")]
 fn unshuffle_n<const N: usize>(src: &[u8], dest: &mut [u8]) {
     let n = src.len() / N;
     let planes: [&[u8]; N] = std::array::from_fn(|j| &src[j * n..(j + 1) * n]);
@@ -260,6 +276,7 @@ fn unshuffle_n<const N: usize>(src: &[u8], dest: &mut [u8]) {
     dest[tail..].copy_from_slice(&src[tail..]);
 }
 
+#[cfg(feature = "read")]
 fn unshuffle_any(typesize: usize, src: &[u8], dest: &mut [u8]) {
     let n = src.len() / typesize;
     for i in 0..n {
@@ -271,6 +288,7 @@ fn unshuffle_any(typesize: usize, src: &[u8], dest: &mut [u8]) {
     dest[tail..].copy_from_slice(&src[tail..]);
 }
 
+#[cfg(feature = "read")]
 fn zlib_decompress(input: &[u8], out: &mut [u8]) -> Result<usize> {
     use std::io::Read;
     let mut d = flate2::read::ZlibDecoder::new(input);
@@ -287,6 +305,7 @@ fn zlib_decompress(input: &[u8], out: &mut [u8]) -> Result<usize> {
 
 /// Decompress a BloscLZ stream (a FastLZ-derived LZ77 format) into `out`, returning the
 /// number of bytes produced, or `None` if the stream is malformed.
+#[cfg(feature = "read")]
 fn blosclz_decompress(input: &[u8], out: &mut [u8]) -> Option<usize> {
     const MAX_DISTANCE: usize = 8191;
     if input.is_empty() {
@@ -362,7 +381,7 @@ fn blosclz_decompress(input: &[u8], out: &mut [u8]) -> Option<usize> {
     Some(op)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read", feature = "write"))]
 mod tests {
     use super::*;
 

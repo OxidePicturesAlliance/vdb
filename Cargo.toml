@@ -6,10 +6,20 @@ description = "A Rust port of OpenVDB: sparse volumetric data structures and too
 license = "MIT"
 repository = "https://github.com/OxidePicturesAlliance/vdb"
 
+[features]
+default = ["read", "write", "nanovdb"]
+# Reading `.vdb` files and streams (and `.nvdb` files with `nanovdb`).
+read = ["dep:flate2", "dep:lz4_flex"]
+# Writing `.vdb` files and streams (and `.nvdb` files with `nanovdb`), and every other
+# function that creates or writes files. Without it, the crate never writes to disk.
+write = ["dep:flate2", "dep:lz4_flex"]
+# NanoVDB: linearized read-only grids, conversion to and from VDB grids.
+nanovdb = []
+
 [dependencies]
-flate2 = "1.1.10"
+flate2 = { version = "1.1.10", optional = true }
 half = "2"
-lz4_flex = "0.14.0"
+lz4_flex = { version = "0.14.0", optional = true }
 num-traits = "0.2"
 rayon = "1"
 thiserror = "1"
@@ -19,3 +29,31 @@ thiserror = "1"
 [[bench]]
 name = "compare"
 harness = false
+required-features = ["read", "write"]
+
+[[example]]
+name = "nanovdb_sphere"
+required-features = ["nanovdb", "read", "write"]
+
+[[example]]
+name = "ray_trace_sphere"
+required-features = ["write"]
+
+[[example]]
+name = "vdb_print"
+required-features = ["read"]
+
+[[test]]
+name = "io"
+required-features = ["read", "write"]
+
+[[test]]
+name = "points"
+required-features = ["read", "write"]
+
+[[test]]
+name = "nanovdb"
+required-features = ["nanovdb", "read", "write"]
+
+[package.metadata.docs.rs]
+all-features = true

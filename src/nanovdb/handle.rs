@@ -187,7 +187,9 @@ impl GridHandle {
         (n < self.grid_count())
             .then(|| super::GridType::from_u32(rd_u32(self.data(), self.offsets[n] + grid_off::GRID_TYPE)))
     }
-    /// Write the raw buffer to a file (`GridHandle::write`; readable by [`io::read_grids`](super::io::read_grids)).
+    /// Write the raw buffer to a file (`GridHandle::write`; readable by
+    /// [`io::read_grids`](super::io::read_grids)). Requires the `write` feature.
+    #[cfg(feature = "write")]
     pub fn write_raw<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
         std::fs::write(path, self.data())?;
         Ok(())

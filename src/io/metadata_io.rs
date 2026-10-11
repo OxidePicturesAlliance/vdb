@@ -4,21 +4,31 @@
 //! A map is stored as a `u32` count followed, for each entry, by the name, the type name
 //! (both as `u32`-length-prefixed strings), a `u32` byte size and the value bytes.
 
-use super::bytes::{Reader, WriteLe};
+#[cfg(feature = "read")]
+use super::bytes::Reader;
+#[cfg(feature = "write")]
+use super::bytes::WriteLe;
+#[cfg(feature = "read")]
 use super::error::Result;
+#[cfg(feature = "read")]
 use crate::math::{Mat4, Vec3};
 use crate::metadata::{MetaMap, MetaValue};
+#[cfg(feature = "read")]
 use std::io::Read;
 
+#[cfg(feature = "read")]
 fn f32s(b: &[u8]) -> impl Iterator<Item = f32> + '_ {
     b.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap()))
 }
+#[cfg(feature = "read")]
 fn f64s(b: &[u8]) -> impl Iterator<Item = f64> + '_ {
     b.chunks_exact(8).map(|c| f64::from_le_bytes(c.try_into().unwrap()))
 }
+#[cfg(feature = "read")]
 fn i32s(b: &[u8]) -> impl Iterator<Item = i32> + '_ {
     b.chunks_exact(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()))
 }
+#[cfg(feature = "read")]
 fn arr<T: Default + Copy, const N: usize>(it: impl Iterator<Item = T>) -> [T; N] {
     let mut a = [T::default(); N];
     for (d, s) in a.iter_mut().zip(it) {
@@ -28,6 +38,7 @@ fn arr<T: Default + Copy, const N: usize>(it: impl Iterator<Item = T>) -> [T; N]
 }
 
 /// Decode a metadata value of the given type from its serialized bytes.
+#[cfg(feature = "read")]
 pub(crate) fn decode_meta(type_name: &str, data: Vec<u8>) -> MetaValue {
     let n = data.len();
     let b = &data[..];
@@ -60,6 +71,7 @@ pub(crate) fn decode_meta(type_name: &str, data: Vec<u8>) -> MetaValue {
 }
 
 /// Serialize a metadata value's payload (without the size prefix).
+#[cfg(feature = "write")]
 pub(crate) fn encode_meta(v: &MetaValue) -> Vec<u8> {
     let mut b = Vec::new();
     match v {
@@ -87,6 +99,7 @@ pub(crate) fn encode_meta(v: &MetaValue) -> Vec<u8> {
 
 /// Read a metadata map. Unknown types are kept verbatim, except temporary ones whose
 /// type name starts with `"__"`, which OpenVDB drops.
+#[cfg(feature = "read")]
 pub(crate) fn read_meta_map<R: Read>(r: &mut Reader<R>) -> Result<MetaMap> {
     let mut map = MetaMap::new();
     let count = r.read_u32()?;
@@ -105,6 +118,7 @@ pub(crate) fn read_meta_map<R: Read>(r: &mut Reader<R>) -> Result<MetaMap> {
 }
 
 /// Write a metadata map. Entries with empty names (which OpenVDB rejects) are skipped.
+#[cfg(feature = "write")]
 pub(crate) fn write_meta_map(out: &mut Vec<u8>, map: &MetaMap) {
     let entries: Vec<_> = map.iter().filter(|(k, _)| !k.is_empty()).collect();
     out.put_u32(entries.len() as u32);
@@ -117,7 +131,7 @@ pub(crate) fn write_meta_map(out: &mut Vec<u8>, map: &MetaMap) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read", feature = "write"))]
 mod tests {
     use super::*;
     use crate::math::{Mat4d, Mat4s, Vec3d, Vec3f, Vec3i};

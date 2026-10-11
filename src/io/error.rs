@@ -37,6 +37,7 @@ pub enum Error {
 /// Result alias for I/O operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(feature = "read")]
 impl Error {
     pub(crate) fn corrupt(msg: impl Into<String>) -> Self {
         Error::Corrupt(msg.into())

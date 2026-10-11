@@ -6,19 +6,32 @@
 //! values, leaf value masks) and then the *buffers* (leaf voxel values), both in
 //! depth-first order with children visited in increasing slot order.
 
-use super::bytes::{Reader, WriteLe};
+#[cfg(feature = "read")]
+use super::bytes::Reader;
+#[cfg(feature = "write")]
+use super::bytes::WriteLe;
+#[cfg(feature = "read")]
 use super::compression::{
-    read_compressed_values, read_compressed_values_into, read_mask, write_compressed_values, write_mask, Compression,
-    ValueCodec, FILE_VERSION_NODE_MASK_COMPRESSION,
+    read_compressed_values, read_compressed_values_into, read_mask, FILE_VERSION_NODE_MASK_COMPRESSION,
 };
+#[cfg(feature = "write")]
+use super::compression::{write_compressed_values, write_mask};
+use super::compression::{Compression, ValueCodec};
+#[cfg(feature = "read")]
 use super::error::{Error, Result};
 use super::value_io::IoValue;
 use crate::math::Coord;
-use crate::tree::{InternalNode, LeafNode, Node, RootEntry, RootNode, Tree};
+#[cfg(feature = "read")]
+use crate::tree::RootNode;
+#[cfg(feature = "write")]
+use crate::tree::Tree;
+use crate::tree::{InternalNode, LeafNode, Node, RootEntry};
 use crate::util::NodeMask;
+#[cfg(feature = "read")]
 use std::io::Read;
 
 /// File format version from which internal nodes store a compressed value array.
+#[cfg(feature = "read")]
 const FILE_VERSION_INTERNALNODE_COMPRESSION: u32 = 214;
 
 /// How leaf voxel values are encoded.
@@ -41,16 +54,25 @@ pub(crate) struct TreeCtx<T> {
 
 /// Serialization of a node and its descendants.
 pub(crate) trait NodeIo<T: IoValue>: Node<Value = T> + Sized {
+    #[cfg(feature = "read")]
     fn read_topology<R: Read>(r: &mut Reader<R>, origin: Coord, ctx: &TreeCtx<T>) -> Result<Self>;
+    #[cfg(feature = "write")]
+    #[cfg(feature = "write")]
     fn write_topology(&self, out: &mut Vec<u8>, ctx: &TreeCtx<T>);
+    #[cfg(feature = "read")]
+    #[cfg(feature = "read")]
     fn read_buffers<R: Read>(&mut self, r: &mut Reader<R>, ctx: &TreeCtx<T>) -> Result<()>;
+    #[cfg(feature = "write")]
+    #[cfg(feature = "write")]
     fn write_buffers(&self, out: &mut Vec<u8>, ctx: &TreeCtx<T>);
 }
 
+#[cfg(feature = "read")]
 fn read_coord<R: Read>(r: &mut Reader<R>) -> Result<Coord> {
     Ok(Coord::new(r.read_i32()?, r.read_i32()?, r.read_i32()?))
 }
 
+#[cfg(feature = "write")]
 fn write_coord(out: &mut Vec<u8>, c: Coord) {
     for i in 0..3 {
         out.put_i32(c[i]);
@@ -58,6 +80,7 @@ fn write_coord(out: &mut Vec<u8>, c: Coord) {
 }
 
 impl<T: IoValue> NodeIo<T> for LeafNode<T> {
+    #[cfg(feature = "read")]
     fn read_topology<R: Read>(r: &mut Reader<R>, origin: Coord, ctx: &TreeCtx<T>) -> Result<Self> {
         let mut mask = NodeMask::<3>::new();
         read_mask(r, &mut mask)?;
@@ -68,10 +91,12 @@ impl<T: IoValue> NodeIo<T> for LeafNode<T> {
         Ok(LeafNode::from_parts(origin, mask, buffer))
     }
 
+    #[cfg(feature = "write")]
     fn write_topology(&self, out: &mut Vec<u8>, _ctx: &TreeCtx<T>) {
         write_mask(out, self.value_mask());
     }
 
+    #[cfg(feature = "read")]
     fn read_buffers<R: Read>(&mut self, r: &mut Reader<R>, ctx: &TreeCtx<T>) -> Result<()> {
         match ctx.leaf_format {
             LeafFormat::Standard => {
@@ -119,6 +144,7 @@ impl<T: IoValue> NodeIo<T> for LeafNode<T> {
         Ok(())
     }
 
+    #[cfg(feature = "write")]
     fn write_buffers(&self, out: &mut Vec<u8>, ctx: &TreeCtx<T>) {
         write_mask(out, self.value_mask());
         match ctx.leaf_format {
@@ -141,6 +167,7 @@ impl<T: IoValue> NodeIo<T> for LeafNode<T> {
 }
 
 impl<T: IoValue, C: NodeIo<T>, const L: u32> NodeIo<T> for InternalNode<C, L> {
+    #[cfg(feature = "read")]
     fn read_topology<R: Read>(r: &mut Reader<R>, origin: Coord, ctx: &TreeCtx<T>) -> Result<Self> {
         let version = ctx.codec.file_version;
         if version < FILE_VERSION_INTERNALNODE_COMPRESSION {
@@ -172,6 +199,7 @@ impl<T: IoValue, C: NodeIo<T>, const L: u32> NodeIo<T> for InternalNode<C, L> {
         Ok(InternalNode::from_parts(origin, child_mask, value_mask, values, children))
     }
 
+    #[cfg(feature = "write")]
     fn write_topology(&self, out: &mut Vec<u8>, ctx: &TreeCtx<T>) {
         write_mask(out, self.child_mask());
         write_mask(out, self.value_mask());
@@ -183,6 +211,7 @@ impl<T: IoValue, C: NodeIo<T>, const L: u32> NodeIo<T> for InternalNode<C, L> {
         }
     }
 
+    #[cfg(feature = "read")]
     fn read_buffers<R: Read>(&mut self, r: &mut Reader<R>, ctx: &TreeCtx<T>) -> Result<()> {
         for child in self.children_mut() {
             child.read_buffers(r, ctx)?;
@@ -190,6 +219,7 @@ impl<T: IoValue, C: NodeIo<T>, const L: u32> NodeIo<T> for InternalNode<C, L> {
         Ok(())
     }
 
+    #[cfg(feature = "write")]
     fn write_buffers(&self, out: &mut Vec<u8>, ctx: &TreeCtx<T>) {
         for (_, child) in self.children() {
             child.write_buffers(out, ctx);
@@ -198,6 +228,7 @@ impl<T: IoValue, C: NodeIo<T>, const L: u32> NodeIo<T> for InternalNode<C, L> {
 }
 
 /// Read a tree's topology and buffers.
+#[cfg(feature = "read")]
 pub(crate) fn read_tree<T, C, R>(
     r: &mut Reader<R>,
     file_version: u32,
@@ -219,6 +250,7 @@ where
 
 /// Read a tree's topology only (buffer count, root, internal nodes and leaf masks); also
 /// returns the context for reading its buffers.
+#[cfg(feature = "read")]
 pub(crate) fn read_tree_topology<T, C, R>(
     r: &mut Reader<R>,
     file_version: u32,
@@ -255,6 +287,7 @@ where
 }
 
 /// Write a tree's topology (buffer count, root, internal nodes and leaf masks).
+#[cfg(feature = "write")]
 pub(crate) fn write_tree_topology<T: IoValue, C: NodeIo<T>>(
     out: &mut Vec<u8>,
     tree: &crate::tree::TreeBase<C>,
@@ -283,6 +316,7 @@ pub(crate) fn write_tree_topology<T: IoValue, C: NodeIo<T>>(
 }
 
 /// Write a tree's leaf buffers.
+#[cfg(feature = "write")]
 pub(crate) fn write_tree_buffers<T: IoValue, C: NodeIo<T>>(
     out: &mut Vec<u8>,
     tree: &crate::tree::TreeBase<C>,
@@ -294,6 +328,7 @@ pub(crate) fn write_tree_buffers<T: IoValue, C: NodeIo<T>>(
 }
 
 /// Context for writing a tree with the given background and settings.
+#[cfg(feature = "write")]
 pub(crate) fn write_ctx<T: IoValue>(
     tree: &Tree<T>,
     compression: Compression,
@@ -306,7 +341,7 @@ pub(crate) fn write_ctx<T: IoValue>(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read", feature = "write"))]
 mod tests {
     use super::*;
     use crate::math::CoordBBox;

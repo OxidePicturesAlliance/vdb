@@ -21,7 +21,8 @@
 //!   [`FpN`] encodings and the [`ValueIndex`]/[`ValueOnIndex`] index grids) and back
 //!   ([`nano_to_openvdb`]),
 //! * statistics ([`update_grid_stats`]) and CRC32 checksums ([`update_checksum`]),
-//! * `.nvdb` file I/O with the NONE, ZIP and BLOSC codecs ([`io`]),
+//! * `.nvdb` file I/O with the NONE, ZIP and BLOSC codecs ([`io`], with the `read` and
+//!   `write` features),
 //! * interpolation ([`sampler`]), ray marching ([`hdda`]) and level-set primitives
 //!   ([`primitives`]).
 //!
@@ -45,6 +46,7 @@ mod dither;
 mod grid;
 mod handle;
 pub mod hdda;
+#[cfg(any(feature = "read", feature = "write"))]
 pub mod io;
 pub mod primitives;
 pub mod sampler;

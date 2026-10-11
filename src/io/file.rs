@@ -1,23 +1,39 @@
 //! Random-access `.vdb` files and sequential streams (port of `openvdb/io/File` and
 //! `openvdb/io/Stream`).
 
+#[cfg(feature = "write")]
+use super::archive::write_archive;
+#[cfg(feature = "read")]
 use super::archive::{
-    copy_tree_from, read_grid_head, read_grid_tree, read_header, string_as_unique_name, write_archive, FileHeader,
-    GridDescriptor, GridHead,
+    copy_tree_from, read_grid_head, read_grid_tree, read_header, string_as_unique_name, FileHeader, GridDescriptor,
+    GridHead,
 };
+#[cfg(feature = "read")]
 use super::bytes::Reader;
+#[cfg(feature = "read")]
 use super::compression::Compression;
-use super::error::{Error, Result};
+#[cfg(feature = "read")]
+use super::error::Error;
+use super::error::Result;
+#[cfg(feature = "read")]
 use super::metadata_io::read_meta_map;
+#[cfg(feature = "write")]
 use super::WriteOptions;
 use crate::grid::AnyGrid;
+#[cfg(feature = "read")]
 use crate::math::Transform;
 use crate::metadata::MetaMap;
+#[cfg(feature = "read")]
 use std::collections::HashMap;
-use std::io::{BufReader, Read, Write};
+#[cfg(feature = "write")]
+use std::io::Write;
+#[cfg(feature = "read")]
+use std::io::{BufReader, Read};
+#[cfg(feature = "read")]
 use std::path::{Path, PathBuf};
 
 /// A grid's descriptor, metadata and transform, read without its tree.
+#[cfg(feature = "read")]
 #[derive(Clone, Debug)]
 pub struct GridMetadata {
     /// The grid's descriptor (names, type, offsets).
@@ -33,6 +49,7 @@ pub struct GridMetadata {
     pub transform: Option<Transform>,
 }
 
+#[cfg(feature = "read")]
 impl GridMetadata {
     fn new(descriptor: GridDescriptor, head: GridHead) -> Self {
         GridMetadata {
@@ -47,6 +64,7 @@ impl GridMetadata {
 
 /// Find the index of the descriptor for `name`: a unique name (also accepted in the
 /// printable `"name[n]"` form) or else the first grid with that grid name.
+#[cfg(feature = "read")]
 fn find_descriptor(descs: &[GridDescriptor], name: &str) -> Option<usize> {
     let unique = string_as_unique_name(name);
     descs
@@ -56,6 +74,7 @@ fn find_descriptor(descs: &[GridDescriptor], name: &str) -> Option<usize> {
 }
 
 /// Resolve instanced grids by copying their parents' trees.
+#[cfg(feature = "read")]
 fn connect_instances(descs: &[GridDescriptor], grids: &mut [Option<AnyGrid>]) -> Result<()> {
     let index: HashMap<&str, usize> = descs.iter().enumerate().map(|(i, d)| (d.unique_name.as_str(), i)).collect();
     for (i, d) in descs.iter().enumerate() {
@@ -73,6 +92,7 @@ fn connect_instances(descs: &[GridDescriptor], grids: &mut [Option<AnyGrid>]) ->
 
 /// Read a grid's data at the reader's position. Returns `None` for an unsupported grid type,
 /// after skipping to the descriptor's end offset (which requires valid offsets).
+#[cfg(feature = "read")]
 fn read_grid_data<R: Read>(
     r: &mut Reader<R>,
     header: &FileHeader,
@@ -95,9 +115,11 @@ fn read_grid_data<R: Read>(
 
 /// Everything in a sequentially read archive: file metadata, descriptors, grid metadata
 /// and grids (`None` for unsupported types).
+#[cfg(feature = "read")]
 type SequentialArchive = (MetaMap, Vec<GridDescriptor>, Vec<GridMetadata>, Vec<Option<AnyGrid>>);
 
 /// Read all grids of a sequential archive (after the header).
+#[cfg(feature = "read")]
 fn read_sequential<R: Read>(r: &mut Reader<R>, header: &FileHeader) -> Result<SequentialArchive> {
     let metadata = read_meta_map(r)?;
     let count = r.read_i32()?;
@@ -129,6 +151,7 @@ fn read_sequential<R: Read>(r: &mut Reader<R>, header: &FileHeader) -> Result<Se
 /// let density = file.read_grid("density")?;
 /// # Ok::<(), vdb::io::Error>(())
 /// ```
+#[cfg(feature = "read")]
 #[derive(Debug)]
 pub struct File {
     path: PathBuf,
@@ -139,6 +162,7 @@ pub struct File {
     preloaded: Option<(Vec<GridMetadata>, Vec<Option<AnyGrid>>)>,
 }
 
+#[cfg(feature = "read")]
 impl File {
     /// Open a file and read its header, metadata and grid descriptors.
     pub fn open(path: impl AsRef<Path>) -> Result<File> {
@@ -286,6 +310,7 @@ impl File {
 ///
 /// Streams are written without grid offsets. When reading, grids of unsupported types
 /// can only be skipped if the data carries offsets (i.e. it was written as a file).
+#[cfg(feature = "read")]
 #[derive(Debug, Clone)]
 pub struct Stream {
     /// The archive header.
@@ -300,6 +325,7 @@ pub struct Stream {
     pub grids: Vec<Option<AnyGrid>>,
 }
 
+#[cfg(feature = "read")]
 impl Stream {
     /// Read a complete archive from a reader.
     pub fn read<R: Read>(reader: R) -> Result<Stream> {
@@ -315,17 +341,30 @@ impl Stream {
     }
 
     /// Write grids and file-level metadata to a writer, without grid offsets.
-    pub fn write<W: Write>(mut writer: W, grids: &[AnyGrid], metadata: &MetaMap, options: &WriteOptions) -> Result<()> {
-        let refs: Vec<&AnyGrid> = grids.iter().collect();
-        let bytes = write_archive(&refs, metadata, options, false)?;
-        writer.write_all(&bytes)?;
-        writer.flush()?;
-        Ok(())
+    #[cfg(feature = "write")]
+    pub fn write<W: Write>(writer: W, grids: &[AnyGrid], metadata: &MetaMap, options: &WriteOptions) -> Result<()> {
+        write_stream_to(writer, grids, metadata, options)
     }
+}
+
+/// Write grids and file-level metadata to a writer, without grid offsets.
+#[cfg(feature = "write")]
+pub(crate) fn write_stream_to<W: Write>(
+    mut writer: W,
+    grids: &[AnyGrid],
+    metadata: &MetaMap,
+    options: &WriteOptions,
+) -> Result<()> {
+    let refs: Vec<&AnyGrid> = grids.iter().collect();
+    let bytes = write_archive(&refs, metadata, options, false)?;
+    writer.write_all(&bytes)?;
+    writer.flush()?;
+    Ok(())
 }
 
 /// Write grids and file-level metadata to a writer in the random-access file layout
 /// (with grid offsets). The archive is assembled in memory first.
+#[cfg(feature = "write")]
 pub fn write_to<W: Write>(mut writer: W, grids: &[AnyGrid], metadata: &MetaMap, options: &WriteOptions) -> Result<()> {
     let refs: Vec<&AnyGrid> = grids.iter().collect();
     let bytes = write_archive(&refs, metadata, options, true)?;

@@ -1,14 +1,18 @@
 //! Little-endian binary reading and writing helpers.
 
+#[cfg(feature = "read")]
 use super::error::{Error, Result};
+#[cfg(feature = "read")]
 use std::io::{Read, Seek, SeekFrom};
 
 /// A reader that tracks its byte position and provides little-endian primitive reads.
+#[cfg(feature = "read")]
 pub(crate) struct Reader<R> {
     inner: R,
     pos: u64,
 }
 
+#[cfg(feature = "read")]
 macro_rules! read_prim {
     ($($name:ident -> $t:ty),* $(,)?) => {$(
         #[inline]
@@ -20,6 +24,7 @@ macro_rules! read_prim {
     )*};
 }
 
+#[cfg(feature = "read")]
 impl<R: Read> Reader<R> {
     pub fn new(inner: R) -> Self {
         Reader { inner, pos: 0 }
@@ -81,6 +86,7 @@ impl<R: Read> Reader<R> {
     }
 }
 
+#[cfg(feature = "read")]
 impl<R: Read + Seek> Reader<R> {
     /// Seek to an absolute byte offset.
     pub fn seek_to(&mut self, pos: u64) -> Result<()> {
@@ -90,6 +96,7 @@ impl<R: Read + Seek> Reader<R> {
 }
 
 /// Little-endian primitive writes into a byte buffer.
+#[cfg(feature = "write")]
 pub(crate) trait WriteLe {
     fn put_u8(&mut self, v: u8);
     fn put_u32(&mut self, v: u32);
@@ -106,6 +113,7 @@ pub(crate) trait WriteLe {
     fn put_string(&mut self, s: &str);
 }
 
+#[cfg(feature = "write")]
 impl WriteLe for Vec<u8> {
     #[inline]
     fn put_u8(&mut self, v: u8) {
@@ -129,7 +137,7 @@ impl WriteLe for Vec<u8> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read", feature = "write"))]
 mod tests {
     use super::*;
 
@@ -158,6 +166,7 @@ mod tests {
     }
 }
 
+#[cfg(feature = "read")]
 impl<R: Read> Read for Reader<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let n = self.inner.read(buf)?;

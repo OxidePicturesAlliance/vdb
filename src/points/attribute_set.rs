@@ -97,6 +97,7 @@ impl Descriptor {
     }
 
     /// Build a descriptor from its parts (used by file I/O; types need not be registered).
+    #[cfg(feature = "read")]
     pub(crate) fn from_raw(
         types: Vec<AttributeType>,
         name_map: BTreeMap<String, usize>,
@@ -464,6 +465,7 @@ impl AttributeSet {
     }
 
     /// Assemble a set from a descriptor and arrays (used by file I/O).
+    #[cfg(feature = "read")]
     pub(crate) fn from_parts(descr: Arc<Descriptor>, attrs: Vec<AttributeArray>) -> Self {
         AttributeSet { descr, attrs: attrs.into_iter().map(Arc::new).collect() }
     }
