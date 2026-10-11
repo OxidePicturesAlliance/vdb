@@ -1,0 +1,15 @@
+[package]
+name = "vdb"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust port of OpenVDB: sparse volumetric data structures and tools"
+license = "MIT"
+repository = "https://github.com/OxidePicturesAlliance/vdb"
+
+[dependencies]
+half = "2"
+num-traits = "0.2"
+rayon = "1"
+thiserror = "1"
+
+[dev-dependencies]
