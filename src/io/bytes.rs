@@ -65,7 +65,7 @@ impl<R: Read> Reader<R> {
     }
 
     read_prim!(
-        read_u8 -> u8, read_i8 -> i8, read_u32 -> u32, read_i32 -> i32, read_i64 -> i64, read_f64 -> f64,
+        read_u8 -> u8, read_i8 -> i8, read_u32 -> u32, read_i32 -> i32, read_i64 -> i64,
     );
 
     pub fn read_bool(&mut self) -> Result<bool> {
@@ -79,14 +79,6 @@ impl<R: Read> Reader<R> {
         Ok(String::from_utf8(b).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
     }
 
-    /// Read `N` consecutive `f64` values.
-    pub fn read_f64s<const N: usize>(&mut self) -> Result<[f64; N]> {
-        let mut out = [0.0; N];
-        for v in out.iter_mut() {
-            *v = self.read_f64()?;
-        }
-        Ok(out)
-    }
 }
 
 impl<R: Read + Seek> Reader<R> {
@@ -103,7 +95,6 @@ pub(crate) trait WriteLe {
     fn put_u32(&mut self, v: u32);
     fn put_i32(&mut self, v: i32);
     fn put_i64(&mut self, v: i64);
-    fn put_f64(&mut self, v: f64);
     /// Write an OpenVDB string (`u32` length + bytes).
     fn put_string(&mut self, s: &str);
 }
@@ -125,10 +116,6 @@ impl WriteLe for Vec<u8> {
     fn put_i64(&mut self, v: i64) {
         self.extend_from_slice(&v.to_le_bytes());
     }
-    #[inline]
-    fn put_f64(&mut self, v: f64) {
-        self.extend_from_slice(&v.to_le_bytes());
-    }
     fn put_string(&mut self, s: &str) {
         self.put_u32(s.len() as u32);
         self.extend_from_slice(s.as_bytes());
@@ -145,12 +132,10 @@ mod tests {
         b.put_u32(7);
         b.put_i64(-3);
         b.put_string("abc");
-        b.put_f64(1.5);
         let mut r = Reader::new(&b[..]);
         assert_eq!(r.read_u32().unwrap(), 7);
         assert_eq!(r.read_i64().unwrap(), -3);
         assert_eq!(r.read_string().unwrap(), "abc");
-        assert_eq!(r.read_f64().unwrap(), 1.5);
         assert_eq!(r.pos(), b.len() as u64);
         assert!(r.read_u8().is_err());
     }
@@ -163,5 +148,13 @@ mod tests {
         let mut r = Reader::new(&b[..]);
         r.skip(2).unwrap();
         assert_eq!(r.read_u8().unwrap(), 3);
+    }
+}
+
+impl<R: Read> Read for Reader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.pos += n as u64;
+        Ok(n)
     }
 }

@@ -270,7 +270,7 @@ pub(crate) fn read_grid_head<R: Read>(r: &mut Reader<R>, header: &FileHeader) ->
     metadata.remove(meta_names::FILE_DELAYED_LOAD);
     let map_type = r.read_string()?;
     let transform = match read_map(r, &map_type) {
-        Ok(m) => Ok(Transform::from_matrix(m)),
+        Ok(m) => Ok(Transform::from_map(m)),
         Err(Error::Unsupported(msg)) => Err(msg),
         Err(e) => return Err(e),
     };
