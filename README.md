@@ -75,6 +75,12 @@ The C++ programs that produced the reference data are in `tests/data/cpp/`. With
 built, `VDB_REF=<path to vdb_ref> cargo test --test io -- --ignored` also checks that C++
 reads every file the Rust writer produces.
 
+## Benchmarks
+
+`benches/compare.sh` runs the same operations with this crate and with C++ OpenVDB 10 and
+prints a comparison table; see [`benches/README.md`](benches/README.md) for the benchmark list
+and current results.
+
 ## License
 
 MIT (see `LICENSE`). OpenVDB itself is licensed under Apache-2.0 / MPL-2.0; this is an

@@ -15,3 +15,7 @@ rayon = "1"
 thiserror = "1"
 
 [dev-dependencies]
+
+[[bench]]
+name = "compare"
+harness = false
