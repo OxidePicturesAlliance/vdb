@@ -25,6 +25,7 @@ pub mod grid;
 pub mod io;
 pub mod math;
 pub mod metadata;
+pub mod nanovdb;
 pub mod tools;
 pub mod tree;
 pub mod types;
