@@ -13,6 +13,7 @@
 #include <openvdb/points/PointConversion.h>
 #include <openvdb/points/PointDataGrid.h>
 #include <openvdb/points/PointGroup.h>
+#include <openvdb/points/PointScatter.h>
 
 #include <cstdint>
 #include <cstdio>
@@ -250,6 +251,21 @@ int gen(const std::string& dir)
             }
         }
         write(dir + "/points_codecs.vdb", {fx16, fx8, tr}, io::COMPRESS_BLOSC | io::COMPRESS_ACTIVE_MASK);
+    }
+
+    // Scattered points (mirrored by scatter_matches_cpp in tests/points.rs).
+    {
+        FloatGrid::Ptr density = FloatGrid::create(0.0f);
+        density->setTransform(math::Transform::createLinearTransform(0.5));
+        density->tree().fill(CoordBBox(Coord(0, 0, 0), Coord(9, 9, 9)), 0.5f, true);
+        density->tree().setValueOn(Coord(-20, 3, 5), 2.0f);
+        PointDataGrid::Ptr uniform = uniformPointScatter(*density, 300, /*seed=*/3, /*spread=*/0.5f);
+        uniform->setName("uniform");
+        PointDataGrid::Ptr dense = denseUniformPointScatter(*density, 0.5f, /*seed=*/1);
+        dense->setName("dense");
+        PointDataGrid::Ptr nonUniform = nonUniformPointScatter(*density, 4.0f, /*seed=*/7, 0.8f);
+        nonUniform->setName("nonuniform");
+        write(dir + "/points_scatter.vdb", {uniform, dense, nonUniform}, io::COMPRESS_BLOSC | io::COMPRESS_ACTIVE_MASK);
     }
 
     // An empty grid and a grid with points in inactive voxels.

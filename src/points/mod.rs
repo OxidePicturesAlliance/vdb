@@ -35,8 +35,13 @@ pub mod point_attribute;
 pub mod point_conversion;
 pub mod point_count;
 pub mod point_data_grid;
+pub mod point_delete;
 pub mod point_group;
 pub mod point_mask;
+pub mod point_move;
+pub mod point_sample;
+pub mod point_scatter;
+pub mod point_statistics;
 
 pub use attribute_array::{AttributeArray, AttributeHandle, AttributeType, AttributeWriteHandle};
 pub use attribute_group::{GroupHandle, GroupIndex, GroupType, GroupWriteHandle, GROUP_BITS};
@@ -63,6 +68,15 @@ pub use point_count::{
 };
 pub use point_data_grid::{
     PointDataGrid, PointDataLeaf, PointDataLeafMut, PointDataLeafNode, PointDataTree, PointLeaf, PointLeafMut,
+};
+pub use point_delete::{delete_from_group, delete_from_groups, keep_points_by_filter};
+pub use point_move::{move_points, move_points_to_transform, CachedDeformer};
+pub use point_scatter::{dense_uniform_point_scatter, non_uniform_point_scatter, uniform_point_scatter};
+pub use point_sample::{
+    box_sample, point_sample, quadratic_sample, sample_grid, sample_grid_auto, SampleSource, SampleTarget, SampledValue,
+};
+pub use point_statistics::{
+    accumulate, accumulate_tree, eval_average, eval_average_tree, eval_min_max, eval_min_max_trees, StatValue,
 };
 pub use point_group::{
     append_group, append_groups, compact_groups, delete_missing_point_groups, drop_all_groups, drop_group, drop_groups,

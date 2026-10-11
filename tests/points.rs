@@ -15,7 +15,8 @@ use vdb::metadata::{MetaMap, MetaValue};
 use vdb::points::{self, *};
 use vdb::AnyGrid;
 
-const REFERENCE_FILES: &[&str] = &["points_attrs", "points_none", "points_zip", "points_codecs", "points_misc"];
+const REFERENCE_FILES: &[&str] =
+    &["points_attrs", "points_none", "points_zip", "points_codecs", "points_misc", "points_scatter"];
 const N: usize = 40;
 const NAMES: [&str; 4] = ["alpha", "beta", "", "gamma"];
 
@@ -423,6 +424,27 @@ fn cpp_reads_rust_points() {
             assert_same_dump(&dump_points_file(&path), &cpp, &format!("{}_{}", name, k));
         }
     }
+}
+
+/// The scatterers reproduce OpenVDB's random points bit for bit (points_scatter.vdb was
+/// written by points_ref with the same parameters).
+#[test]
+fn scatter_matches_cpp() {
+    let mut density = vdb::FloatGrid::new(0.0).with_transform(Transform::linear(0.5));
+    density.tree_mut().fill(&vdb::CoordBBox::from_coords(0, 0, 0, 9, 9, 9), 0.5, true);
+    density.set_value(&vdb::Coord::new(-20, 3, 5), 2.0);
+    let mut uniform = uniform_point_scatter(&density, 300, 3, 0.5, Codec::Null).unwrap();
+    uniform.set_name("uniform");
+    let mut dense = dense_uniform_point_scatter(&density, 0.5, 1, 1.0, Codec::Null).unwrap();
+    dense.set_name("dense");
+    let mut non_uniform = non_uniform_point_scatter(&density, 4.0, 7, 0.8, Codec::Null).unwrap();
+    non_uniform.set_name("nonuniform");
+    let mut actual = String::new();
+    for g in [&dense, &non_uniform, &uniform] {
+        dump_point_grid(&mut actual, g.name(), g);
+    }
+    let expected = std::fs::read_to_string(data("points").join("points_scatter.dump.txt")).unwrap();
+    assert_same_dump(&actual, &expected, "scatter");
 }
 
 #[test]
