@@ -1,0 +1,27 @@
+file_version 224
+grid after_points
+  type Tree_float_5_4_3
+  meta file_bbox_max vec3i 3 2 1
+  meta file_bbox_min vec3i 3 2 1
+  meta file_compression string "blosc + active values"
+  meta file_mem_bytes int64 307600
+  meta file_voxel_count int64 1
+  meta name string "after_points"
+  background 0000000000000000
+  active_voxels 1
+  active_tiles 0
+  leaf_count 1
+  bbox 3 2 1 3 2 1
+  active_hash 0988f4f97b9bc239
+  leaf_hash 78a1406b4cffc24c
+  tile_hash cb89e2d5b0bb9a15
+  transform 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+grid points
+  type Tree_ptdataidx32_5_4_3
+  meta file_bbox_max vec3i 3 12 2
+  meta file_bbox_min vec3i -2 2 -4
+  meta file_compression string "blosc + active values"
+  meta file_mem_bytes int64 614690
+  meta file_voxel_count int64 4
+  meta name string "points"
+  unsupported

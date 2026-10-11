@@ -1,0 +1,20 @@
+file_version 224
+meta description string "fog volume with tiles"
+grid fog
+  type Tree_float_5_4_3
+  meta class string "fog volume"
+  meta file_bbox_max vec3i 12287 4095 4095
+  meta file_bbox_min vec3i -300 0 0
+  meta file_compression string "active values"
+  meta file_mem_bytes int64 1249596
+  meta file_voxel_count int64 137448161226
+  meta name string "fog"
+  background 0000000000000000
+  active_voxels 137448161226
+  active_tiles 9764
+  leaf_count 62
+  bbox -300 0 0 12287 4095 4095
+  active_hash 97649faa7f8e0cc2
+  leaf_hash b7948034ae82f386
+  tile_hash 576cd421b1003e3c
+  transform 3fb999999999999a 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fb999999999999a 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fb999999999999a 0000000000000000 4024000000000000 c014000000000000 4004000000000000 3ff0000000000000

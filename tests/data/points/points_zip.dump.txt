@@ -1,0 +1,132 @@
+grid attrs
+  transform 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+  leaf_count 11
+  active_voxels 40
+  points 40
+  attribute 0 P vec3s fxpt16
+  attribute 1 density float null
+  attribute 2 v vec3s null
+  attribute 3 id int32 null
+  attribute 4 name uint32 str
+  attribute 5 arr float null
+  attribute 6 uni float null
+  attribute 7 hid int32 null
+  attribute 8 __group uint8 grp
+  group even 0
+  group first 1
+  group unused 2
+  descriptor_meta default:uni float 000000003f800000
+  descriptor_meta string:0 string "alpha"
+  descriptor_meta string:1 string "beta"
+  descriptor_meta string:2 string ""
+  descriptor_meta string:3 string "gamma"
+  leaf 0 0 -8 points 1 mask 507f743dfac538c1 offsets 864f7fff33faa735
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage c9aa9a1387d3b7ef
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4d25767f9dce13f5
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 1 storage fcf61b9b755b3315
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 1 storage cc9047690baeb3d1
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 1 storage ad2aca7747985764
+    array 5 size 1 stride 3 data_size 3 flags 8 uniform 0 storage ee094afe3b9b8f62
+    array 6 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 1 stride 1 data_size 1 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 1 stride 1 data_size 1 flags 8 uniform 1 storage af63be4c8601b992
+  leaf 0 8 -8 points 7 mask 5b6e484dde3cf43d offsets ab9dc106634cf1b5
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage e13be126ab4d9060
+    array 1 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 2ecbfd54d44627ca
+    array 2 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 7245aec1ecb1af0a
+    array 3 size 7 stride 1 data_size 7 flags 8 uniform 0 storage e91918eb6d0597ef
+    array 4 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 3d8e8095ad42efc5
+    array 5 size 7 stride 3 data_size 21 flags 8 uniform 0 storage c8e4c1e2aec34f78
+    array 6 size 7 stride 1 data_size 7 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 7 stride 1 data_size 7 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 8ecf01bd52a55c52
+  leaf 8 0 -8 points 11 mask fbc8ae198fd2b595 offsets 75198467eb7ab9e6
+    array 0 size 11 stride 1 data_size 11 flags 8 uniform 0 storage 2d3ad45c38b4431a
+    array 1 size 11 stride 1 data_size 11 flags 8 uniform 0 storage c102ec4e8ba98856
+    array 2 size 11 stride 1 data_size 11 flags 8 uniform 0 storage eb3be776d1c4e796
+    array 3 size 11 stride 1 data_size 11 flags 8 uniform 0 storage 7badb0fcbe1a77f2
+    array 4 size 11 stride 1 data_size 11 flags 8 uniform 0 storage aa8e7f4f8ae4f0b1
+    array 5 size 11 stride 3 data_size 33 flags 8 uniform 0 storage ef722f3ae8c4cf41
+    array 6 size 11 stride 1 data_size 11 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 11 stride 1 data_size 11 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 11 stride 1 data_size 11 flags 8 uniform 0 storage ad492e52851c11d3
+  leaf 8 8 -8 points 1 mask 60aad30d522d4865 offsets 049dc3880ef36fd5
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 0400d3906e2ad4da
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4b05767f9bffad95
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 1 storage cd8aa051b1454b85
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 0c5affbc69c8117b
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4d25767f9dce13f5
+    array 5 size 1 stride 3 data_size 3 flags 8 uniform 0 storage 91f5b5a01a71e33e
+    array 6 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 1 stride 1 data_size 1 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 1 stride 1 data_size 1 flags 8 uniform 1 storage af63bc4c8601b62c
+  leaf 16 0 -8 points 1 mask f6183599acdbfba5 offsets 1448ab015f8ce954
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 2f81d712989852ef
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4cef557f9da04c72
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 1 storage b00388889f7b83e2
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 8bf0706325facccf
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4d25767f9dce13f5
+    array 5 size 1 stride 3 data_size 3 flags 8 uniform 0 storage f9715822c5cebc54
+    array 6 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 1 stride 1 data_size 1 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 1 stride 1 data_size 1 flags 8 uniform 1 storage af63bc4c8601b62c
+  leaf 16 8 -8 points 2 mask ec3faa0aee0ef9b9 offsets 864cec2e0feadc25
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 56b94db543b860d6
+    array 1 size 2 stride 1 data_size 2 flags 8 uniform 0 storage cefabf8e37702ea9
+    array 2 size 2 stride 1 data_size 2 flags 8 uniform 0 storage a0b43b4b87ff7d89
+    array 3 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 4950777b261a799e
+    array 4 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 8ce23005a62754b0
+    array 5 size 2 stride 3 data_size 6 flags 8 uniform 0 storage 066f35203f2a3805
+    array 6 size 2 stride 1 data_size 2 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 2 stride 1 data_size 2 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 08328707b4eb6e3a
+  leaf 0 0 0 points 1 mask b9b23d3a46fd04bf offsets ef37b2d8b42fa4e4
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 2620987308b8f918
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4b57857f9c45d13a
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 1 storage f9066903852f156a
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 0a86229a0c40e353
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4d25767f9dce13f5
+    array 5 size 1 stride 3 data_size 3 flags 8 uniform 0 storage 3cc178a9543ace54
+    array 6 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 1 stride 1 data_size 1 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 1 stride 1 data_size 1 flags 8 uniform 1 storage af63bc4c8601b62c
+  leaf 0 8 0 points 7 mask 3f303b1c3458a7ed offsets c00cd248e2e4e7d2
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage ce84393c85da526d
+    array 1 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 64f6e8335d0db947
+    array 2 size 7 stride 1 data_size 7 flags 8 uniform 0 storage e9c7cb6478155cb7
+    array 3 size 7 stride 1 data_size 7 flags 8 uniform 0 storage fba7b9bb61a1b7fd
+    array 4 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 33dc44a9affd7443
+    array 5 size 7 stride 3 data_size 21 flags 8 uniform 0 storage 3b4b2c9e56986b5f
+    array 6 size 7 stride 1 data_size 7 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 7 stride 1 data_size 7 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 2ce189478ef771bc
+  leaf 8 0 0 points 6 mask c72b21290cb58f95 offsets 4a4cbfd711c9b643
+    array 0 size 6 stride 1 data_size 6 flags 8 uniform 0 storage e69c7aff3ae0cb90
+    array 1 size 6 stride 1 data_size 6 flags 8 uniform 0 storage c637f232152aedcd
+    array 2 size 6 stride 1 data_size 6 flags 8 uniform 0 storage e6c7705d76acbcfd
+    array 3 size 6 stride 1 data_size 6 flags 8 uniform 0 storage 3f3d899c99435436
+    array 4 size 6 stride 1 data_size 6 flags 8 uniform 0 storage 923c9234a2bf5007
+    array 5 size 6 stride 3 data_size 18 flags 8 uniform 0 storage 33a6b968f36ee009
+    array 6 size 6 stride 1 data_size 6 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 6 stride 1 data_size 6 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 6 stride 1 data_size 6 flags 8 uniform 0 storage cf3ee6fa24b85408
+  leaf 16 0 0 points 2 mask 776f11821cb1dffd offsets 0a8e8d6c8b52d5d7
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 8eb9d7fb675517a8
+    array 1 size 2 stride 1 data_size 2 flags 8 uniform 0 storage fd99b74abc758105
+    array 2 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 061c00d49a4ba885
+    array 3 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 45c1015b89e40d97
+    array 4 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 66d2d622e521dbc3
+    array 5 size 2 stride 3 data_size 6 flags 8 uniform 0 storage 41848786eb4e09ad
+    array 6 size 2 stride 1 data_size 2 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 2 stride 1 data_size 2 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 2 stride 1 data_size 2 flags 8 uniform 1 storage af63bd4c8601b7df
+  leaf 16 8 0 points 1 mask d8ccd0c9e6c13245 offsets 35ef108ded770144
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage ac9222c7dcd9f424
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4b9b7d7f9c7f906e
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 73d7647e0fe4696e
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 1 storage aa562ee51424846c
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 8d1ace904a398d17
+    array 5 size 1 stride 3 data_size 3 flags 8 uniform 0 storage b70a8423de7ca3f0
+    array 6 size 1 stride 1 data_size 1 flags 8 uniform 1 storage 4bdf767f9cb95155
+    array 7 size 1 stride 1 data_size 1 flags 10 uniform 1 storage 6d3572669b2cde42
+    array 8 size 1 stride 1 data_size 1 flags 8 uniform 1 storage af63bd4c8601b7df

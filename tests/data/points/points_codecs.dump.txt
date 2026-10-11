@@ -1,0 +1,132 @@
+grid fxpt16
+  transform 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+  leaf_count 11
+  active_voxels 40
+  points 40
+  attribute 0 P vec3s fxpt16
+  attribute 1 N vec3s uvec
+  attribute 2 alpha float ufxpt8
+  attribute 3 h float trnc
+  attribute 4 col vec3s ufxpt16
+  leaf 0 0 -8 points 1 mask 507f743dfac538c1 offsets 864f7fff33faa735
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage c9aa9a1387d3b7ef
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 0a999307b6f5eba1
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 0 storage af63bd4c8601b7df
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 08328c07b4eb76b9
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 0 storage c88b0fd9fe6e4419
+  leaf 0 8 -8 points 7 mask 5b6e484dde3cf43d offsets ab9dc106634cf1b5
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage e13be126ab4d9060
+    array 1 size 7 stride 1 data_size 7 flags 8 uniform 0 storage ec346eadc168d999
+    array 2 size 7 stride 1 data_size 7 flags 8 uniform 0 storage a6787401e76d3608
+    array 3 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 6697ff5f5cce1ae1
+    array 4 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 94a08e940ce46e13
+  leaf 8 0 -8 points 11 mask fbc8ae198fd2b595 offsets 75198467eb7ab9e6
+    array 0 size 11 stride 1 data_size 11 flags 8 uniform 0 storage 2d3ad45c38b4431a
+    array 1 size 11 stride 1 data_size 11 flags 8 uniform 0 storage d8da6d5744d488eb
+    array 2 size 11 stride 1 data_size 11 flags 8 uniform 0 storage 84428e6c647c2ef8
+    array 3 size 11 stride 1 data_size 11 flags 8 uniform 0 storage c0188fa321d0b423
+    array 4 size 11 stride 1 data_size 11 flags 8 uniform 0 storage f65bec1ad4d6bdca
+  leaf 8 8 -8 points 1 mask 60aad30d522d4865 offsets 049dc3880ef36fd5
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 0400d3906e2ad4da
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 0a999307b6f5eba1
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 0 storage af63bd4c8601b7df
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 08328c07b4eb76b9
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 0 storage c88b0fd9fe6e4419
+  leaf 16 0 -8 points 1 mask f6183599acdbfba5 offsets 1448ab015f8ce954
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 2f81d712989852ef
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 0a999307b6f5eba1
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 0 storage af63bd4c8601b7df
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 08328c07b4eb76b9
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 0 storage c88b0fd9fe6e4419
+  leaf 16 8 -8 points 2 mask ec3faa0aee0ef9b9 offsets 864cec2e0feadc25
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 56b94db543b860d6
+    array 1 size 2 stride 1 data_size 2 flags 8 uniform 0 storage c3d80f6433c43d19
+    array 2 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 08327c07b4eb5b89
+    array 3 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 704c6a7fb1db9723
+    array 4 size 2 stride 1 data_size 2 flags 8 uniform 0 storage e2c3eba6801f0996
+  leaf 0 0 0 points 1 mask b9b23d3a46fd04bf offsets ef37b2d8b42fa4e4
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 2620987308b8f918
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 0a999307b6f5eba1
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 0 storage af63bd4c8601b7df
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 08328c07b4eb76b9
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 0 storage c88b0fd9fe6e4419
+  leaf 0 8 0 points 7 mask 3f303b1c3458a7ed offsets c00cd248e2e4e7d2
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage ce84393c85da526d
+    array 1 size 7 stride 1 data_size 7 flags 8 uniform 0 storage ec346eadc168d999
+    array 2 size 7 stride 1 data_size 7 flags 8 uniform 0 storage a6787401e76d3608
+    array 3 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 6697ff5f5cce1ae1
+    array 4 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 94a08e940ce46e13
+  leaf 8 0 0 points 6 mask c72b21290cb58f95 offsets 4a4cbfd711c9b643
+    array 0 size 6 stride 1 data_size 6 flags 8 uniform 0 storage e69c7aff3ae0cb90
+    array 1 size 6 stride 1 data_size 6 flags 8 uniform 0 storage d8a0c7f81626deeb
+    array 2 size 6 stride 1 data_size 6 flags 8 uniform 0 storage be1cc036259b9d94
+    array 3 size 6 stride 1 data_size 6 flags 8 uniform 0 storage 8515ef7d30f4bfa1
+    array 4 size 6 stride 1 data_size 6 flags 8 uniform 0 storage 40122e602466dd28
+  leaf 16 0 0 points 2 mask 776f11821cb1dffd offsets 0a8e8d6c8b52d5d7
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 8eb9d7fb675517a8
+    array 1 size 2 stride 1 data_size 2 flags 8 uniform 0 storage c3d80f6433c43d19
+    array 2 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 08327c07b4eb5b89
+    array 3 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 704c6a7fb1db9723
+    array 4 size 2 stride 1 data_size 2 flags 8 uniform 0 storage e2c3eba6801f0996
+  leaf 16 8 0 points 1 mask d8ccd0c9e6c13245 offsets 35ef108ded770144
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage ac9222c7dcd9f424
+    array 1 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 0a999307b6f5eba1
+    array 2 size 1 stride 1 data_size 1 flags 8 uniform 0 storage af63bd4c8601b7df
+    array 3 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 08328c07b4eb76b9
+    array 4 size 1 stride 1 data_size 1 flags 8 uniform 0 storage c88b0fd9fe6e4419
+grid fxpt8
+  transform 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+  leaf_count 11
+  active_voxels 40
+  points 40
+  attribute 0 P vec3s fxpt8
+  leaf 0 0 -8 points 1 mask 507f743dfac538c1 offsets 864f7fff33faa735
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage a32734196f09ea94
+  leaf 0 8 -8 points 7 mask 5b6e484dde3cf43d offsets ab9dc106634cf1b5
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 8f61367d419c150f
+  leaf 8 0 -8 points 11 mask fbc8ae198fd2b595 offsets 75198467eb7ab9e6
+    array 0 size 11 stride 1 data_size 11 flags 8 uniform 0 storage 05b8c99e6e1c0b8e
+  leaf 8 8 -8 points 1 mask 60aad30d522d4865 offsets 049dc3880ef36fd5
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage b43a9b1a9ae860c7
+  leaf 16 0 -8 points 1 mask f6183599acdbfba5 offsets 1448ab015f8ce954
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage cd224a17d44435f6
+  leaf 16 8 -8 points 2 mask ec3faa0aee0ef9b9 offsets 864cec2e0feadc25
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 029680dfa4cc44de
+  leaf 0 0 0 points 1 mask b9b23d3a46fd04bf offsets ef37b2d8b42fa4e4
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 4adbe7193c8daa47
+  leaf 0 8 0 points 7 mask 3f303b1c3458a7ed offsets c00cd248e2e4e7d2
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 3b35aecab02f72f2
+  leaf 8 0 0 points 6 mask c72b21290cb58f95 offsets 4a4cbfd711c9b643
+    array 0 size 6 stride 1 data_size 6 flags 8 uniform 0 storage f4bc2f0687356f96
+  leaf 16 0 0 points 2 mask 776f11821cb1dffd offsets 0a8e8d6c8b52d5d7
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage e173a1b370a405a5
+  leaf 16 8 0 points 1 mask d8ccd0c9e6c13245 offsets 35ef108ded770144
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage edbde619086cee2b
+grid trnc
+  transform 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+  leaf_count 11
+  active_voxels 40
+  points 40
+  attribute 0 P vec3s trnc
+  leaf 0 0 -8 points 1 mask 507f743dfac538c1 offsets 864f7fff33faa735
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage d7e4fcfa299d713d
+  leaf 0 8 -8 points 7 mask 5b6e484dde3cf43d offsets ab9dc106634cf1b5
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 3f37c02a41c0179a
+  leaf 8 0 -8 points 11 mask fbc8ae198fd2b595 offsets 75198467eb7ab9e6
+    array 0 size 11 stride 1 data_size 11 flags 8 uniform 0 storage 97b71200c087a661
+  leaf 8 8 -8 points 1 mask 60aad30d522d4865 offsets 049dc3880ef36fd5
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage d77a729a50673c8a
+  leaf 16 0 -8 points 1 mask f6183599acdbfba5 offsets 1448ab015f8ce954
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage d7ba1e9d2c5064c5
+  leaf 16 8 -8 points 2 mask ec3faa0aee0ef9b9 offsets 864cec2e0feadc25
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 3ac4a667877eb2ba
+  leaf 0 0 0 points 1 mask b9b23d3a46fd04bf offsets ef37b2d8b42fa4e4
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 2b2aadf302a299c9
+  leaf 0 8 0 points 7 mask 3f303b1c3458a7ed offsets c00cd248e2e4e7d2
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage a6901df4862a4069
+  leaf 8 0 0 points 6 mask c72b21290cb58f95 offsets 4a4cbfd711c9b643
+    array 0 size 6 stride 1 data_size 6 flags 8 uniform 0 storage ac33138af7847e42
+  leaf 16 0 0 points 2 mask 776f11821cb1dffd offsets 0a8e8d6c8b52d5d7
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 9f8e0b68f1f5df02
+  leaf 16 8 0 points 1 mask d8ccd0c9e6c13245 offsets 35ef108ded770144
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage b1a034684661cc11
