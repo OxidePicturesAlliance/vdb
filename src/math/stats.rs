@@ -8,8 +8,10 @@ use std::fmt;
 /// Tracks the minimum and maximum of a sequence of values of any ordered type (`math::MinMax`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MinMax<T> {
-    min: T,
-    max: T,
+    /// The minimum so far.
+    pub min: T,
+    /// The maximum so far.
+    pub max: T,
 }
 
 impl<T: Copy + PartialOrd + Bounded> Default for MinMax<T> {
@@ -19,19 +21,10 @@ impl<T: Copy + PartialOrd + Bounded> Default for MinMax<T> {
     }
 }
 
-impl<T: Copy + PartialOrd> MinMax<T> {
+impl<T: Copy> MinMax<T> {
     /// Start from explicit extrema.
     pub fn with_bounds(min: T, max: T) -> Self {
         MinMax { min, max }
-    }
-    /// Add a value.
-    pub fn add(&mut self, val: T) {
-        if val < self.min {
-            self.min = val;
-        }
-        if self.max < val {
-            self.max = val;
-        }
     }
     /// Add a value using a custom strict-weak "less than" ordering.
     pub fn add_by(&mut self, val: T, less: impl Fn(&T, &T) -> bool) {
@@ -39,6 +32,26 @@ impl<T: Copy + PartialOrd> MinMax<T> {
             self.min = val;
         }
         if less(&self.max, &val) {
+            self.max = val;
+        }
+    }
+    /// The minimum.
+    pub fn min(&self) -> T {
+        self.min
+    }
+    /// The maximum.
+    pub fn max(&self) -> T {
+        self.max
+    }
+}
+
+impl<T: Copy + PartialOrd> MinMax<T> {
+    /// Add a value.
+    pub fn add(&mut self, val: T) {
+        if val < self.min {
+            self.min = val;
+        }
+        if self.max < val {
             self.max = val;
         }
     }
@@ -50,14 +63,6 @@ impl<T: Copy + PartialOrd> MinMax<T> {
         if self.max < other.max {
             self.max = other.max;
         }
-    }
-    /// The minimum.
-    pub fn min(&self) -> T {
-        self.min
-    }
-    /// The maximum.
-    pub fn max(&self) -> T {
-        self.max
     }
 }
 

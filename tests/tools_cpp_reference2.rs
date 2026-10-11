@@ -221,19 +221,39 @@ fn diagnostics_reference() {
     assert_eq!(check_fog_volume(&f, 6), "1 voxel is outside the value range [0,1]\n");
 }
 
-/// OpenVDB builds Platonic solids with mesh scan conversion, which uses a slightly
-/// narrower band near edges; this port uses exact convex-polytope distances, so its active
-/// set is a slight superset of OpenVDB's (counts below are OpenVDB 10's).
+/// Platonic solids are built by mesh scan conversion exactly like OpenVDB, so active voxel
+/// counts must match OpenVDB 10's.
 #[test]
 fn platonic_vs_mesh_to_level_set() {
-    let reference = [(4u32, 10724u64), (6, 11966), (8, 17204), (12, 24983), (20, 23136)];
-    for (faces, cpp_count) in reference {
+    // (faces, active voxels, leaves, sum of active values) from `scratchpad/a4d9cpp/plat.cpp`.
+    let reference = [
+        (4u32, 10724u64, 63usize, 374.299),
+        (6, 11966, 63, 223.599),
+        (8, 17204, 107, 403.488),
+        (12, 24983, 144, 415.674),
+        (20, 23136, 126, 412.567),
+    ];
+    for (faces, cpp_count, cpp_leaves, cpp_sum) in reference {
         let g = create_level_set_platonic::<f32>(faces, 1.0, Vec3f::new(0.1, 0.2, -0.05), 0.05, 3.0).unwrap();
         let n = g.active_voxel_count();
         println!("faces {faces}: {n} active voxels (OpenVDB: {cpp_count})");
-        assert!(n >= cpp_count && (n - cpp_count) as f64 <= 0.025 * cpp_count as f64, "faces {faces}: {n}");
+        assert_eq!(n, cpp_count, "faces {faces}");
+        assert_eq!(g.tree().leaf_count(), cpp_leaves, "faces {faces}");
+        let sum: f64 = g.tree().active_voxels().map(|(_, v)| v as f64).sum();
+        assert!(close(sum, cpp_sum, 2e-6), "faces {faces}: sum {sum}");
         assert_eq!(g.get_value(&Coord::new(5, 3, 1)), -0.15);
     }
     let tet = create_level_set_tetrahedron::<f32>(1.0, Vec3f::new(0.1, 0.2, -0.05), 0.05, 3.0).unwrap();
     assert!((tet.get_value(&Coord::new(0, 0, 0)) - -0.13333).abs() < 1e-5);
+    let bx = create_level_set_box::<f32>(
+        vdb::math::Vec3d::new(-1.03f32 as f64, -0.5f32 as f64, -0.77f32 as f64),
+        vdb::math::Vec3d::new(1.0, 0.6f32 as f64, 0.8f32 as f64),
+        0.1,
+        3.0,
+    )
+    .unwrap();
+    assert_eq!(bx.active_voxel_count(), 7594);
+    assert_eq!(bx.tree().leaf_count(), 48);
+    let sum: f64 = bx.tree().active_voxels().map(|(_, v)| v as f64).sum();
+    assert!(close(sum, 426.034, 2e-6), "box sum {sum}");
 }

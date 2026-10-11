@@ -390,18 +390,7 @@ impl<'a, M: RealValue + ArithValue> AlphaMask<'a, M> {
 }
 
 /// OpenVDB's `math::SmoothUnitStep`: 0 for `x <= 0`, 1 for `x >= 1`, `(3 - 2x)x²` in between.
-#[inline]
-pub fn smooth_unit_step(x: f64) -> f64 {
-    if x > 0.0 {
-        if x < 1.0 {
-            (3.0 - 2.0 * x) * x * x
-        } else {
-            1.0
-        }
-    } else {
-        0.0
-    }
-}
+pub use crate::math::math_util::smooth_unit_step;
 
 #[cfg(test)]
 mod tests {

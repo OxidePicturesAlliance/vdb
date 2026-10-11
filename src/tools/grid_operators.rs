@@ -16,7 +16,7 @@
 //! | [`magnitude`] | vector | scalar | — |
 //! | [`normalize`] | vector | vector | — |
 
-use super::internal::topology_copy;
+use super::tree_ops::topology_copy;
 use crate::grid::{Grid, GridClass, VecType};
 use crate::math::finite_difference::{AccessorAt, DDScheme, DScheme};
 use crate::math::operators::{self as ops, MapJacobian};

@@ -15,10 +15,8 @@
 //! extension functor is called with world-space positions (OpenVDB uses an identity transform
 //! for the extension grid, so for unit voxels at the origin the results coincide).
 
-use super::internal::{
-    change_asymmetric_level_set_background, change_level_set_background, dilate_neighbors, face_edge_neighbors,
-    face_edge_vertex_neighbors, FACE_NEIGHBORS,
-};
+use super::change_background::set_level_set_background;
+use super::morphology::{dilate_active_values, TilePolicy};
 use crate::grid::{Grid, GridClass};
 use crate::math::stencils::GradStencil;
 use crate::math::{Coord, Vec3, Vec3d};
@@ -40,16 +38,7 @@ pub enum FastSweepingDomain {
 }
 
 /// Neighbourhood used for dilation (`NearestNeighbors`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum NearestNeighbors {
-    /// The 6 face neighbours.
-    #[default]
-    Face,
-    /// The 18 face and edge neighbours.
-    FaceEdge,
-    /// The 26 face, edge and vertex neighbours.
-    FaceEdgeVertex,
-}
+pub use super::morphology::NearestNeighbors;
 
 /// Values that can be extended by fast sweeping: floating-point scalars and vectors are
 /// interpolated, integers take the value of the closest neighbour.
@@ -105,7 +94,8 @@ impl ExtValue for i32 {
     }
 }
 
-const OFFSETS: [[i32; 3]; 6] = FACE_NEIGHBORS;
+/// The six face-neighbour offsets, in the order used by OpenVDB's sweeping kernels.
+const OFFSETS: [[i32; 3]; 6] = [[-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1]];
 
 /// One slice of voxels with equal diagonal key: `(leaf index, voxel offsets)`.
 type Slice = Vec<(usize, Vec<u16>)>;
@@ -347,7 +337,7 @@ impl<T: RealValue, E: ExtValue> FastSweeping<T, E> {
         let sign = if self.is_input_sdf { T::from_f64(1.0) } else { T::from_f64(-1.0) };
         let above = sign * max;
         let sdf = self.sdf.as_mut().expect("initialized");
-        super::internal::write_leaf_buffers(sdf.tree_mut(), &bufs);
+        super::leaf_buffers::write_leaf_buffers(sdf.tree_mut(), &bufs);
         {
             let mut acc = self.sweep_mask.accessor_mut();
             for c in boundary {
@@ -448,13 +438,8 @@ impl<T: RealValue, E: ExtValue> FastSweeping<T, E> {
         self.mode = mode;
         let background = *grid.background();
         let unknown = T::max_value();
-        change_level_set_background(sdf.tree_mut(), unknown);
-        let offsets: Vec<[i32; 3]> = match nn {
-            NearestNeighbors::Face => FACE_NEIGHBORS.to_vec(),
-            NearestNeighbors::FaceEdge => face_edge_neighbors(),
-            NearestNeighbors::FaceEdgeVertex => face_edge_vertex_neighbors(),
-        };
-        dilate_neighbors(sdf.tree_mut(), dilation, &offsets);
+        set_level_set_background(sdf.tree_mut(), unknown, -unknown, true);
+        dilate_active_values(sdf.tree_mut(), dilation as i32, nn, TilePolicy::IgnoreTiles, true);
         self.sweep_mask = Tree::new(false);
         self.sweep_mask.topology_union(sdf.tree());
         let input = grid.tree();
@@ -519,7 +504,7 @@ impl<T: RealValue, E: ExtValue> FastSweeping<T, E> {
         }
         let mut sdf = grid.clone();
         let unknown = T::max_value();
-        change_level_set_background(sdf.tree_mut(), unknown);
+        set_level_set_background(sdf.tree_mut(), unknown, -unknown, true);
         // The topology to sweep into.
         let mut topo = Tree::new(false);
         if mask.grid_class() == GridClass::LevelSet {
@@ -829,7 +814,7 @@ impl<T: RealValue, E: ExtValue> FastSweeping<T, E> {
         };
         sdf.tree_mut().visit_tiles_mut(&mut |_, v, _, _| fix(v));
         sdf.tree_mut().par_for_each_leaf_mut(|leaf| leaf.for_each_on_mut(|_, v| fix(v)));
-        change_asymmetric_level_set_background(sdf.tree_mut(), hi, lo);
+        set_level_set_background(sdf.tree_mut(), hi, lo, true);
     }
 }
 

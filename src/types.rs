@@ -110,6 +110,7 @@ mod tests {
 /// Floating-point scalar values (`f32`, `f64`), as required by level-set and filtering tools.
 pub trait RealValue:
     Value
+    + crate::tools::value_traits::ToolValue
     + TypeName
     + num_traits::Float
     + num_traits::FloatConst

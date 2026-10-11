@@ -8,10 +8,11 @@
 //! and trims voxels that left the band, and [`resize`](LevelSetTracker::resize) changes the
 //! band's half-width.
 
-use super::internal::{
-    change_level_set_background, dilate_face, erode_face, mask_difference, par_leaf_compute, prune_level_set,
-    uniform_voxel_size, voxel_mask, AuxBuffers,
-};
+use super::change_background::set_level_set_background;
+use super::leaf_buffers::{par_leaf_compute, AuxBuffers};
+use super::morphology::{dilate_active_values, erode_active_values, NearestNeighbors, TilePolicy};
+use super::prune::level_set_prune;
+use super::tree_ops::{topology_copy, topology_difference};
 use crate::grid::{Grid, GridClass};
 use crate::math::finite_difference::{BiasedGradientScheme, TemporalIntegrationScheme};
 use crate::math::operators::is_gradient_norm_sqrd;
@@ -20,7 +21,7 @@ use crate::tree::{LeafNode, Node, Tree};
 use crate::types::{RealValue, Value};
 
 /// OpenVDB's default narrow-band half-width, in voxels (`LEVEL_SET_HALF_WIDTH`).
-pub const LEVEL_SET_HALF_WIDTH: f64 = 3.0;
+pub use super::level_set_sphere::LEVEL_SET_HALF_WIDTH;
 
 /// How [`LevelSetTracker::prune`] treats voxels that have left the narrow band
 /// (`lstrack::TrimMode`).
@@ -77,7 +78,7 @@ pub enum LevelSetError {
 
 /// Check that `grid` is a level set with uniform voxels and return its voxel size.
 pub(crate) fn check_level_set<T: Value>(grid: &Grid<T>) -> Result<f64, LevelSetError> {
-    let dx = uniform_voxel_size(grid).ok_or(LevelSetError::NonUniformVoxels)?;
+    let dx = grid.uniform_voxel_size().ok_or(LevelSetError::NonUniformVoxels)?;
     if grid.grid_class() != GridClass::LevelSet {
         return Err(LevelSetError::NotALevelSet(grid.grid_class().as_str()));
     }
@@ -288,12 +289,13 @@ impl<'a, T: RealValue> LevelSetTracker<'a, T> {
                 }
             });
         }
-        prune_level_set(self.grid.tree_mut());
+        let bg = *self.grid.background();
+        level_set_prune(self.grid.tree_mut(), bg, -bg, true);
     }
 
     /// Dilate the band by one voxel, re-normalize and prune (one step of narrow-band tracking).
     pub fn track(&mut self) {
-        dilate_face(self.grid.tree_mut(), 1);
+        dilate_active_values(self.grid.tree_mut(), 1, NearestNeighbors::Face, TilePolicy::IgnoreTiles, true);
         self.normalize();
         self.prune();
     }
@@ -301,13 +303,14 @@ impl<'a, T: RealValue> LevelSetTracker<'a, T> {
     /// Grow the narrow band by `iterations` voxels.
     pub fn dilate(&mut self, iterations: usize) {
         for _ in 0..iterations {
-            let mask0 = if self.state.norm_count > 0 { Some(voxel_mask(self.grid.tree())) } else { None };
-            dilate_face(self.grid.tree_mut(), 1);
+            let mask0: Option<Tree<bool>> =
+                if self.state.norm_count > 0 { Some(topology_copy(self.grid.tree(), false)) } else { None };
+            dilate_active_values(self.grid.tree_mut(), 1, NearestNeighbors::Face, TilePolicy::IgnoreTiles, true);
             let bg = self.dx + *self.grid.background();
-            change_level_set_background(self.grid.tree_mut(), bg);
+            set_level_set_background(self.grid.tree_mut(), bg, -bg, true);
             if let Some(mask0) = mask0 {
-                let mut mask = voxel_mask(self.grid.tree());
-                mask_difference(&mut mask, &mask0);
+                let mut mask: Tree<bool> = topology_copy(self.grid.tree(), false);
+                topology_difference(&mut mask, &mask0);
                 self.normalize_masked(&mask);
             }
         }
@@ -315,10 +318,17 @@ impl<'a, T: RealValue> LevelSetTracker<'a, T> {
 
     /// Shrink the narrow band by `iterations` voxels.
     pub fn erode(&mut self, iterations: usize) {
-        erode_face(self.grid.tree_mut(), iterations);
-        prune_level_set(self.grid.tree_mut());
-        let bg = *self.grid.background() - T::from_f64(iterations as f64) * self.dx;
-        change_level_set_background(self.grid.tree_mut(), bg);
+        erode_active_values(
+            self.grid.tree_mut(),
+            iterations as i32,
+            NearestNeighbors::Face,
+            TilePolicy::IgnoreTiles,
+            true,
+        );
+        let bg = *self.grid.background();
+        level_set_prune(self.grid.tree_mut(), bg, -bg, true);
+        let bg = bg - T::from_f64(iterations as f64) * self.dx;
+        set_level_set_background(self.grid.tree_mut(), bg, -bg, true);
     }
 
     /// Change the half-width of the narrow band (in voxels); returns true if it changed.

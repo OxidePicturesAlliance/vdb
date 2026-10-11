@@ -804,6 +804,53 @@ pub fn for_each_tile<T: Value>(tree: &Tree<T>, mut f: impl FnMut(CoordBBox, T, b
     tree.visit_tiles(&mut |b, v, on, level| f(b, *v, on, level));
 }
 
+/// An active value visited by [`visit_values_on_ordered`].
+#[derive(Clone, Copy, Debug)]
+pub enum ActiveValue<T> {
+    /// An active leaf voxel.
+    Voxel(Coord, T),
+    /// An active tile covering `bbox`.
+    Tile(CoordBBox, T),
+}
+
+/// Visit every active value (voxels and tiles) in the order of OpenVDB's
+/// `Tree::cbeginValueOn()` iterator: depth first, with tiles and child nodes interleaved in
+/// slot order at every level.
+pub fn visit_values_on_ordered<T: Value>(tree: &Tree<T>, f: &mut dyn FnMut(ActiveValue<T>)) {
+    fn visit_internal<C: Node, const L: u32>(
+        node: &InternalNode<C, L>,
+        f: &mut dyn FnMut(ActiveValue<C::Value>),
+        child: &mut dyn FnMut(&C, &mut dyn FnMut(ActiveValue<C::Value>)),
+    ) {
+        for n in 0..(1usize << (3 * L)) {
+            if let Some(c) = node.child(n) {
+                child(c, f);
+            } else if node.value_mask().is_on(n) {
+                let o = node.offset_to_global_coord(n);
+                f(ActiveValue::Tile(CoordBBox::create_cube(o, C::DIM), node.values()[n]));
+            }
+        }
+    }
+    for (key, e) in tree.root().table() {
+        match e {
+            RootEntry::Tile { value, active } => {
+                if *active {
+                    f(ActiveValue::Tile(CoordBBox::create_cube(*key, Internal2::<T>::DIM), *value));
+                }
+            }
+            RootEntry::Child(n2) => {
+                visit_internal(n2.as_ref(), f, &mut |n1: &Internal1<T>, f| {
+                    visit_internal(n1, f, &mut |leaf: &LeafNode<T>, f| {
+                        for (pos, v) in leaf.iter_on() {
+                            f(ActiveValue::Voxel(leaf.offset_to_global_coord(pos), *v));
+                        }
+                    });
+                });
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

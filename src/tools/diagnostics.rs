@@ -9,8 +9,10 @@
 //! * [`unique_inactive_values`] collects the distinct inactive values of a grid.
 
 use crate::grid::{Grid, GridClass};
+use crate::math::finite_difference::{AccessorAt, BiasedGradientScheme};
+use crate::math::operators::is_gradient_norm_sqrd;
+use crate::math::stencils::{weno_norm_sq_grad_values, weno_values, weno_zero_crossing};
 use crate::math::{Coord, Vec3, Vec3d, Vec3f, Vec3i};
-use crate::tools::level_set_measure::{first_bias_norm_sq_grad, weno_norm_sq_grad, weno_values, weno_zero_crossing};
 use crate::tools::statistics::ValueIterKind;
 use crate::tools::tree_ops::{has_active_tiles, merge, MergePolicy};
 use crate::tools::value_traits::{ToolError, ToolResult, ToolValue};
@@ -288,8 +290,9 @@ impl<T: RealValue + ToolValue> DiagnosticCheck<T> for CheckNormGrad {
     fn check_tile(&self, _v: &T) -> bool {
         self.check_value(&T::from_f64(0.0))
     }
-    fn check_voxel(&self, acc: &ValueAccessor<'_, Internal2<T>>, ijk: &Coord, v: &T) -> bool {
-        let n = first_bias_norm_sq_grad(acc, ijk, *v).to_f64() * self.inv_dx2;
+    fn check_voxel(&self, acc: &ValueAccessor<'_, Internal2<T>>, ijk: &Coord, _v: &T) -> bool {
+        let n =
+            is_gradient_norm_sqrd(BiasedGradientScheme::FirstBias, &AccessorAt::new(acc, *ijk)).to_f64() * self.inv_dx2;
         n < self.min2 || n > self.max2
     }
     fn description(&self) -> String {
@@ -327,12 +330,15 @@ impl<T: RealValue + ToolValue> DiagnosticCheck<T> for CheckEikonal {
     fn check_tile(&self, _v: &T) -> bool {
         self.check_value(&T::from_f64(0.0))
     }
-    fn check_voxel(&self, acc: &ValueAccessor<'_, Internal2<T>>, ijk: &Coord, v: &T) -> bool {
-        let s = weno_values(acc, ijk, *v);
+    fn check_voxel(&self, acc: &ValueAccessor<'_, Internal2<T>>, ijk: &Coord, _v: &T) -> bool {
+        let s = weno_values(&AccessorAt::new(acc, *ijk));
         if !weno_zero_crossing(&s) {
             return false;
         }
-        let n = weno_norm_sq_grad(&s, self.dx, T::from_f64(0.0)).to_f64();
+        // Constants of `WenoStencil` (computed in the value type, as in OpenVDB).
+        let dx2 = T::from_f64(self.dx * self.dx);
+        let inv_dx2 = T::from_f64(1.0 / dx2.to_f64());
+        let n = weno_norm_sq_grad_values(&s, dx2.to_f64() as f32, inv_dx2, T::from_f64(0.0)).to_f64();
         n < self.min || n > self.max
     }
     fn description(&self) -> String {

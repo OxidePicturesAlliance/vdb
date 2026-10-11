@@ -91,29 +91,17 @@ pub fn mem_usage<T: Value>(tree: &Tree<T>) -> u64 {
     tree.mem_usage() as u64
 }
 
-/// Minimum and maximum of a set of values (`math::MinMax`).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MinMax<T> {
-    pub min: T,
-    pub max: T,
-}
+pub use crate::math::stats::MinMax;
 
 /// The minimum and maximum active values (voxels and tiles) of the tree, compared with
 /// `math::cwiseLessThan` (lexicographically for vectors). Both are zero for a tree without
 /// active values (`tools::minMax`).
 pub fn min_max<T: ToolValue>(tree: &Tree<T>) -> MinMax<T> {
-    let mut acc: Option<MinMax<T>> = None;
     let add = |acc: &mut Option<MinMax<T>>, v: T| match acc {
-        None => *acc = Some(MinMax { min: v, max: v }),
-        Some(m) => {
-            if v.cwise_lt(&m.min) {
-                m.min = v;
-            }
-            if v.cwise_gt(&m.max) {
-                m.max = v;
-            }
-        }
+        None => *acc = Some(MinMax::with_bounds(v, v)),
+        Some(m) => m.add_by(v, |a, b| a.cwise_lt(b)),
     };
+    let mut acc: Option<MinMax<T>> = None;
     tree.visit_tiles(&mut |_, v, on, _| {
         if on {
             add(&mut acc, *v)
@@ -134,7 +122,7 @@ pub fn min_max<T: ToolValue>(tree: &Tree<T>) -> MinMax<T> {
         add(&mut acc, r.min);
         add(&mut acc, r.max);
     }
-    acc.unwrap_or(MinMax { min: T::zero(), max: T::zero() })
+    acc.unwrap_or(MinMax::with_bounds(T::zero(), T::zero()))
 }
 
 #[cfg(test)]

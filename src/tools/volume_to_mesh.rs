@@ -8,13 +8,13 @@
 //!
 //! Supported input value types are `f32`, `f64` and `bool` (see [`MeshValue`]).
 
-use super::mesh_support::{normalize_vec, INVALID_IDX};
 use super::volume_to_mesh_tables::{ADAPTABLE, AMBIGUOUS_FACE, EDGE_GROUP_TABLE};
 use crate::grid::{Grid, GridClass};
 use crate::math::{Coord, CoordBBox, Transform, Vec3d, Vec3f};
 use crate::tree::{Internal2, LeafNode, Node, Tree, ValueAccessor};
 use crate::types::Value;
 use crate::util::NodeMask;
+use crate::util::INVALID_IDX;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -302,7 +302,7 @@ pub fn find_feature_point(points: &[Vec3d], normals: &[Vec3d]) -> Vec3d {
 
 fn is_planar_quad(p0: &Vec3d, p1: &Vec3d, p2: &Vec3d, p3: &Vec3d, epsilon: f64) -> bool {
     let mut normal = (*p2 - *p0).cross(&(*p1 - *p3));
-    normalize_vec(&mut normal);
+    normal.normalize_eps(1.0e-7);
     let centroid = *p0 + *p1 + *p2 + *p3;
     let d = centroid.dot(&normal) * 0.25;
     for p in [p0, p1, p2, p3] {
@@ -1368,7 +1368,7 @@ fn merge_voxel_regions<T: MeshValue>(
                     )
                 };
                 let mut dir = Vec3f::new(g(1, 0, 0), g(0, 1, 0), g(0, 0, 1));
-                normalize_vec(&mut dir);
+                dir.normalize_eps(1.0e-7);
                 if invert_grad {
                     dir = -dir;
                 }
@@ -1743,7 +1743,7 @@ fn relax_disoriented_triangles<T: MeshValue>(
                     for v in &pool.triangles {
                         let (v0, v1, v2) = (pts[v[0] as usize], pts[v[1] as usize], pts[v[2] as usize]);
                         let mut normal = (v2 - v0).cross(&(v1 - v0));
-                        normalize_vec(&mut normal);
+                        normal.normalize_eps(1.0e-7);
                         let centroid = (v0 + v1 + v2) * (1.0f32 / 3.0f32);
                         let ijk = xform.world_to_index_cell_centered(Vec3d::new(
                             centroid[0] as f64,
@@ -1757,7 +1757,7 @@ fn relax_disoriented_triangles<T: MeshValue>(
                             )
                         };
                         let mut dir = Vec3f::new(g(1, 0, 0), g(0, 1, 0), g(0, 0, 1));
-                        normalize_vec(&mut dir);
+                        dir.normalize_eps(1.0e-7);
                         if invert_grad {
                             dir = -dir;
                         }
@@ -2241,25 +2241,7 @@ mod tests {
     use super::*;
 
     fn sphere_grid(radius: f32, voxel: f32, hw: f32) -> Grid<f32> {
-        let mut g = Grid::<f32>::new(voxel * hw).with_transform(Transform::linear(voxel as f64));
-        g.set_grid_class(GridClass::LevelSet);
-        let r0 = radius / voxel;
-        let n = (r0 + hw).ceil() as i32 + 1;
-        {
-            let tree = g.tree_mut();
-            for i in -n..=n {
-                for j in -n..=n {
-                    for k in -n..=n {
-                        let d = ((i * i + j * j + k * k) as f32).sqrt() - r0;
-                        if d.abs() < hw {
-                            tree.set_value(&Coord::new(i, j, k), d * voxel);
-                        }
-                    }
-                }
-            }
-            super::super::mesh_support::signed_flood_fill_with_values(tree, voxel * hw, -voxel * hw);
-        }
-        g
+        crate::tools::test_util::make_sphere(radius as f64, Vec3d::zero(), voxel as f64, hw as f64)
     }
 
     #[test]

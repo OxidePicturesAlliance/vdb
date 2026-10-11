@@ -12,8 +12,10 @@
 //! deterministic. When attributes are transferred into a non-empty level set, the final
 //! CSG union is a voxel-wise minimum.
 
-use super::mesh_support::{prune_level_set, signed_flood_fill_with_values, take_leaves};
 use super::point_partitioner::{PointArray, PointPartitioner};
+use super::prune::level_set_prune;
+use super::signed_flood_fill::signed_flood_fill_with_values;
+use super::tree_ops::steal_leaves;
 use crate::grid::Grid;
 use crate::math::{Coord, CoordBBox, Vec3d};
 use crate::tree::{Node, Tree};
@@ -534,7 +536,7 @@ impl<'a, T: P2lsValue, A: Value> ParticlesToLevelSet<'a, T, A> {
             let av = if T::IS_MASK && on { v.blind } else { bg.blind };
             att_tree.add_tile(level, &b.min, av, on);
         }
-        for leaf in take_leaves(blind) {
+        for leaf in steal_leaves(&mut blind, bg) {
             let origin = leaf.origin();
             let mut sl = crate::tree::LeafNode::<T>::new(origin, sdf_tree.background().clone(), false);
             let mut al = crate::tree::LeafNode::<A>::new(origin, bg.blind, false);
@@ -589,26 +591,26 @@ fn prune_level_set_generic<T: P2lsValue>(tree: &mut Tree<T>, bg: T) {
     // Only reached for floating-point outputs.
     if let Some(t) = (tree as &mut dyn std::any::Any).downcast_mut::<Tree<f32>>() {
         let b = bg.to_f64() as f32;
-        prune_level_set(t, b, -b);
+        level_set_prune(t, b, -b, true);
     } else if let Some(t) = (tree as &mut dyn std::any::Any).downcast_mut::<Tree<f64>>() {
         let b = bg.to_f64();
-        prune_level_set(t, b, -b);
+        level_set_prune(t, b, -b, true);
     }
 }
 
 fn signed_flood_fill_generic<T: P2lsValue>(tree: &mut Tree<T>) {
     if let Some(t) = (tree as &mut dyn std::any::Any).downcast_mut::<Tree<f32>>() {
         let b = t.background().abs();
-        signed_flood_fill_with_values(t, b, -b);
+        let _ = signed_flood_fill_with_values(t, b, -b, true);
     } else if let Some(t) = (tree as &mut dyn std::any::Any).downcast_mut::<Tree<f64>>() {
         let b = t.background().abs();
-        signed_flood_fill_with_values(t, b, -b);
+        let _ = signed_flood_fill_with_values(t, b, -b, true);
     }
 }
 
 fn prune_ls<T: RealValue + P2lsValue>(grid: &mut Grid<T>) {
     let bg = *grid.background();
-    prune_level_set(grid.tree_mut(), bg, -bg);
+    level_set_prune(grid.tree_mut(), bg, -bg, true);
 }
 
 /// Populate a level set grid with spheres given by the particle positions and radii

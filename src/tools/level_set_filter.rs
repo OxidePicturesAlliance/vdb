@@ -6,7 +6,7 @@
 //! [`LevelSetTracker`], so the tracker's schemes and parameters can be set directly. All
 //! filters accept an optional alpha mask (see [`super::interpolation::AlphaMask`]).
 
-use super::internal::{masked_voxel_pass, write_leaf_buffers, MaskSpec};
+use super::leaf_buffers::{masked_voxel_pass, write_leaf_buffers, MaskSpec};
 use super::level_set_tracker::{LevelSetError, LevelSetTracker};
 use crate::grid::Grid;
 use crate::math::stencils::{CurvatureStencil, DenseStencil, GradStencil};

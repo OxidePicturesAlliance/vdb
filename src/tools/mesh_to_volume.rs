@@ -18,17 +18,18 @@
 //! without interrupter in OpenVDB silently drops the interior test; here
 //! [`mesh_to_volume_with_interior_test`] honours it.
 
-/// `util::INVALID_IDX`: marks the unused fourth index of triangles stored as 4-tuples.
-pub use super::mesh_support::INVALID_IDX;
-use super::mesh_support::{
-    closest_point_on_triangle_to_point, normalize_vec, prune_level_set, signed_flood_fill_with_values, take_leaves,
-    COORD_OFFSETS,
-};
+use super::prune::level_set_prune;
+use super::signed_flood_fill::signed_flood_fill_with_values;
+use super::tree_ops::steal_leaves;
 use crate::grid::{Grid, GridClass};
+use crate::math::proximity::closest_point_on_triangle_to_point;
 use crate::math::{Coord, CoordBBox, Transform, Vec3, Vec3d, Vec3f};
 use crate::tree::{Internal2, LeafNode, Node, Tree, ValueAccessor};
 use crate::types::{RealValue, Value};
 use crate::util::NodeMask;
+use crate::util::COORD_OFFSETS;
+/// `util::INVALID_IDX`: marks the unused fourth index of triangles stored as 4-tuples.
+pub use crate::util::INVALID_IDX;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
@@ -304,10 +305,10 @@ fn voxelize_polygon<T: RealValue, M: MeshDataAdapter>(mesh: &M, n: usize, data: 
 /// Combine the distance/index trees of one voxelization batch into the output trees
 /// (`combineData`): unique leaves are moved, overlapping voxels take the smaller distance
 /// (ties are resolved toward the smaller polygon index).
-fn combine_data<T: RealValue>(dist: &mut Tree<T>, index: &mut Tree<i32>, rdist: Tree<T>, rindex: Tree<i32>) {
-    let rdist_leaves = take_leaves(rdist);
+fn combine_data<T: RealValue>(dist: &mut Tree<T>, index: &mut Tree<i32>, mut rdist: Tree<T>, mut rindex: Tree<i32>) {
+    let rdist_leaves = steal_leaves(&mut rdist, <T as Value>::zero());
     let mut rindex_leaves: HashMap<Coord, Box<LeafNode<i32>>> =
-        take_leaves(rindex).into_iter().map(|l| (l.origin(), l)).collect();
+        steal_leaves(&mut rindex, 0).into_iter().map(|l| (l.origin(), l)).collect();
     for rd in rdist_leaves {
         let origin = rd.origin();
         let ri = rindex_leaves.remove(&origin);
@@ -700,11 +701,11 @@ fn compute_intersecting_voxel_sign<T: RealValue, M: MeshDataAdapter>(
                         let p = closest_point(mesh, &nxyz, poly);
                         points[pi] = p;
                         let mut dir = nxyz - p;
-                        normalize_vec(&mut dir);
+                        dir.normalize_eps(1.0e-7);
                         points[pi + 1] = dir;
                     }
                     let mut dir1 = xyz - points[pi];
-                    normalize_vec(&mut dir1);
+                    dir1.normalize_eps(1.0e-7);
                     if points[pi + 1].dot(&dir1) > 0.0 {
                         flip = true;
                         break;
@@ -727,9 +728,9 @@ fn compute_intersecting_voxel_sign<T: RealValue, M: MeshDataAdapter>(
                     let nxyz = nijk.as_vec3d();
                     let cp = closest_point(mesh, &nxyz, idx_acc.get_value(&nijk));
                     let mut dir1 = xyz - cp;
-                    normalize_vec(&mut dir1);
+                    dir1.normalize_eps(1.0e-7);
                     let mut dir2 = nxyz - cp;
-                    normalize_vec(&mut dir2);
+                    dir2.normalize_eps(1.0e-7);
                     if dir2.dot(&dir1) > 0.0 {
                         flips.push(pos);
                         break;
@@ -1201,7 +1202,7 @@ where
 
     if signed {
         dist_tree.root_mut().set_background(exterior_width, false);
-        signed_flood_fill_with_values(&mut dist_tree, exterior_width, -interior_width);
+        let _ = signed_flood_fill_with_values(&mut dist_tree, exterior_width, -interior_width, true);
     } else {
         dist_tree.set_background(exterior_width);
     }
@@ -1381,7 +1382,7 @@ where
                 }
             }
         });
-        prune_level_set(&mut dist_tree, exterior_width, if signed { -interior_width } else { -exterior_width });
+        level_set_prune(&mut dist_tree, exterior_width, if signed { -interior_width } else { -exterior_width }, true);
     }
 
     dist_grid.set_tree(dist_tree);
@@ -1648,8 +1649,8 @@ impl<'a> GenEdgeData<'a> {
         }
     }
 
-    fn join(&mut self, rhs: GenEdgeData<'a>) {
-        for leaf in take_leaves(rhs.tree) {
+    fn join(&mut self, mut rhs: GenEdgeData<'a>) {
+        for leaf in steal_leaves(&mut rhs.tree, EdgeData::default()) {
             let origin = leaf.origin();
             match self.tree.probe_leaf_mut(&origin) {
                 None => self.tree.add_leaf(leaf),

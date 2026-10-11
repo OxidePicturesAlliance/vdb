@@ -10,9 +10,12 @@
 //! OpenVDB's (verified against the C++ implementation); the tile layout of the interior may
 //! differ.
 
-use super::mesh_support::{prune_level_set, signed_flood_fill_with_values};
-use crate::grid::{Grid, GridClass};
-use crate::math::{Coord, CoordBBox, Transform, Vec3};
+use super::level_set_sphere::create_level_set;
+use super::prune::level_set_prune;
+use super::signed_flood_fill::signed_flood_fill_with_values;
+use super::tree_ops::steal_leaves;
+use crate::grid::Grid;
+use crate::math::{Coord, CoordBBox, Vec3};
 use crate::tree::{LeafNode, Node, Tree};
 use crate::types::{RealValue, Value};
 use rayon::prelude::*;
@@ -244,8 +247,8 @@ fn rasterize_shape<T: RealValue>(tree: &mut Tree<T>, shape: &dyn SdfShape<T>, vo
 }
 
 /// Min-merge the active voxels of `rhs` into `lhs`.
-fn merge_min<T: RealValue>(lhs: &mut Tree<T>, rhs: Tree<T>) {
-    for leaf in super::mesh_support::take_leaves(rhs) {
+fn merge_min<T: RealValue>(lhs: &mut Tree<T>, mut rhs: Tree<T>) {
+    for leaf in steal_leaves(&mut rhs, <T as Value>::zero()) {
         match lhs.probe_leaf_mut(&leaf.origin()) {
             None => lhs.add_leaf(leaf),
             Some(mine) => {
@@ -314,9 +317,9 @@ pub(crate) fn rasterize_union<T: RealValue>(shapes: &[DynShape<T>], vox: T, hw: 
             }
         });
     }
-    signed_flood_fill_with_values(&mut tree, bg, -bg);
+    let _ = signed_flood_fill_with_values(&mut tree, bg, -bg, true);
     if prune {
-        prune_level_set(&mut tree, bg, -bg);
+        level_set_prune(&mut tree, bg, -bg, true);
     }
     tree
 }
@@ -326,9 +329,8 @@ pub(crate) fn rasterize_union<T: RealValue>(shapes: &[DynShape<T>], vox: T, hw: 
 pub(crate) fn level_set_params<T: RealValue>(voxel_size: f32, half_width: f32) -> (Grid<T>, T, T, T) {
     assert!(voxel_size > 0.0, "voxel size must be positive");
     assert!(half_width > 0.0, "half-width must be positive");
-    let bg = T::from_f64((voxel_size * half_width) as f64);
-    let mut grid = Grid::<T>::new(bg).with_transform(Transform::linear(voxel_size as f64));
-    grid.set_grid_class(GridClass::LevelSet);
+    let grid = create_level_set::<T>(voxel_size as f64, half_width as f64);
+    let bg = *grid.background();
     let vs = grid.voxel_size()[0];
     let vox = T::from_f64(vs);
     let hw = T::from_f64(bg.to_f64() / vs);
@@ -476,6 +478,7 @@ pub fn create_level_set_tube_complex_with_radii<T: RealValue, S: RealValue>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::grid::GridClass;
     use crate::math::Vec3f;
 
     #[test]

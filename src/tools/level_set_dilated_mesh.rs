@@ -10,8 +10,8 @@
 //! and the report for the comparison against the C++ library).
 
 use super::level_set_tubes::{level_set_params, rasterize_union, Capsule, DynShape, SdfShape};
-use super::mesh_support::closest_point_on_triangle_to_point;
 use crate::grid::Grid;
+use crate::math::proximity::closest_point_on_triangle_to_point;
 use crate::math::{Coord, CoordBBox, Vec3, Vec3d};
 use crate::types::RealValue;
 

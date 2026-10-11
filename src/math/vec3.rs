@@ -205,6 +205,25 @@ impl<T: Float> Vec3<T> {
     pub fn is_approx_equal(&self, o: &Self, tol: T) -> bool {
         (0..3).all(|i| (self.0[i] - o.0[i]).abs() <= tol)
     }
+    /// OpenVDB's `Vec3::eq(v, eps)`: every component is equal to within `eps`, absolutely or
+    /// relatively (`math::isRelOrApproxEqual(a, b, eps, eps)`). With `eps = 1e-7` this is
+    /// `math::isApproxEqual(Vec3, Vec3)`.
+    #[inline]
+    pub fn eq_eps(&self, o: &Self, eps: T) -> bool {
+        (0..3).all(|i| super::math_util::is_rel_or_approx_equal(self.0[i], o.0[i], eps, eps))
+    }
+    /// OpenVDB's `Vec3::normalize(eps)`: returns false (leaving the vector untouched) if the
+    /// length is within `eps` of zero; otherwise multiplies by the reciprocal length.
+    #[inline]
+    pub fn normalize_eps(&mut self, eps: T) -> bool {
+        let d = self.length();
+        if !(d.abs() > eps) {
+            return false;
+        }
+        let inv = T::one() / d;
+        *self = Vec3([self.0[0] * inv, self.0[1] * inv, self.0[2] * inv]);
+        true
+    }
     #[inline]
     pub fn is_finite(&self) -> bool {
         self.0.iter().all(|v| v.is_finite())
