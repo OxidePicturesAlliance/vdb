@@ -223,6 +223,8 @@ pub struct BaseStencil<'a, T: Value> {
     /// The leaf that contained the last center (with its origin), if any.
     leaf: Option<(Coord, &'a LeafNode<T>)>,
     lut: Vec<u16>,
+    /// Buffer positions of the offsets along each axis: `axis_lut[axis * side + o + radius]`.
+    axis_lut: Vec<u16>,
     radius: i32,
     side: i32,
     center_pos: usize,
@@ -239,6 +241,7 @@ impl<'a, T: Value> Clone for BaseStencil<'a, T> {
             leaf_offsets: self.leaf_offsets.clone(),
             leaf: self.leaf,
             lut: self.lut.clone(),
+            axis_lut: self.axis_lut.clone(),
             radius: self.radius,
             side: self.side,
             center_pos: self.center_pos,
@@ -265,6 +268,15 @@ impl<'a, T: Value> BaseStencil<'a, T> {
         }
         let size = offsets.len();
         let leaf_offsets = offsets.iter().map(|o| (o[0] << 6) + (o[1] << 3) + o[2]).collect();
+        let mut axis_lut = vec![NO_ENTRY; 3 * side as usize];
+        for axis in 0..3 {
+            for o in -radius..=radius {
+                let mut ijk = [radius; 3];
+                ijk[axis] += o;
+                let idx = ((ijk[0] * side + ijk[1]) * side + ijk[2]) as usize;
+                axis_lut[axis * side as usize + (o + radius) as usize] = lut[idx];
+            }
+        }
         BaseStencil {
             grid,
             acc: ValueAccessor::new(grid.tree()),
@@ -272,6 +284,7 @@ impl<'a, T: Value> BaseStencil<'a, T> {
             leaf_offsets,
             leaf: None,
             lut,
+            axis_lut,
             radius,
             side,
             center_pos,
@@ -370,6 +383,22 @@ impl<'a, T: Value> BaseStencil<'a, T> {
             None => panic!("offset ({i}, {j}, {k}) is not part of this stencil"),
         }
     }
+    /// The value at offset `o` along `axis` (0 = x, 1 = y, 2 = z) from the center.
+    ///
+    /// # Panics
+    /// If the offset is not part of the stencil.
+    #[inline]
+    pub fn value_on_axis(&self, axis: usize, o: i32) -> T {
+        let idx = (o + self.radius) as u32;
+        if idx < self.side as u32 {
+            let e = self.axis_lut[axis * self.side as usize + idx as usize];
+            if e != NO_ENTRY {
+                return self.values[e as usize];
+            }
+        }
+        let (i, j, k) = [(o, 0, 0), (0, o, 0), (0, 0, o)][axis];
+        panic!("offset ({i}, {j}, {k}) is not part of this stencil")
+    }
     /// Overwrite the cached value at offset `(i, j, k)`.
     #[inline]
     pub fn set_value(&mut self, i: i32, j: i32, k: i32, v: T) {
@@ -462,6 +491,10 @@ impl<T: Value> StencilValues for BaseStencil<'_, T> {
         self.value(i, j, k)
     }
     #[inline]
+    fn value_on_axis(&self, axis: usize, o: i32) -> T {
+        BaseStencil::value_on_axis(self, axis, o)
+    }
+    #[inline]
     fn center_value(&self) -> T {
         BaseStencil::center_value(self)
     }
@@ -498,6 +531,10 @@ macro_rules! simple_stencil {
             #[inline]
             fn value_at(&self, i: i32, j: i32, k: i32) -> T {
                 self.0.value(i, j, k)
+            }
+            #[inline]
+            fn value_on_axis(&self, axis: usize, o: i32) -> T {
+                self.0.value_on_axis(axis, o)
             }
             #[inline]
             fn center_value(&self) -> T {
@@ -629,6 +666,10 @@ impl<T: Value> StencilValues for GradStencil<'_, T> {
         self.base.value(i, j, k)
     }
     #[inline]
+    fn value_on_axis(&self, axis: usize, o: i32) -> T {
+        self.base.value_on_axis(axis, o)
+    }
+    #[inline]
     fn center_value(&self) -> T {
         self.base.center_value()
     }
@@ -737,6 +778,10 @@ impl<T: Value> StencilValues for WenoStencil<'_, T> {
     #[inline]
     fn value_at(&self, i: i32, j: i32, k: i32) -> T {
         self.base.value(i, j, k)
+    }
+    #[inline]
+    fn value_on_axis(&self, axis: usize, o: i32) -> T {
+        self.base.value_on_axis(axis, o)
     }
     #[inline]
     fn center_value(&self) -> T {
@@ -866,6 +911,10 @@ impl<T: Value> StencilValues for CurvatureStencil<'_, T> {
     #[inline]
     fn value_at(&self, i: i32, j: i32, k: i32) -> T {
         self.base.value(i, j, k)
+    }
+    #[inline]
+    fn value_on_axis(&self, axis: usize, o: i32) -> T {
+        self.base.value_on_axis(axis, o)
     }
     #[inline]
     fn center_value(&self) -> T {
@@ -1054,6 +1103,10 @@ impl<T: Value> StencilValues for DenseStencil<'_, T> {
     #[inline]
     fn value_at(&self, i: i32, j: i32, k: i32) -> T {
         self.base.value(i, j, k)
+    }
+    #[inline]
+    fn value_on_axis(&self, axis: usize, o: i32) -> T {
+        self.base.value_on_axis(axis, o)
     }
     #[inline]
     fn center_value(&self) -> T {

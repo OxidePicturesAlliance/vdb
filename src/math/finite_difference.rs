@@ -300,6 +300,12 @@ pub trait StencilValues {
     fn center_value(&self) -> Self::Value {
         self.value_at(0, 0, 0)
     }
+    /// The value at offset `o` along `axis` (0 = x, 1 = y, 2 = z) from the center.
+    #[inline]
+    fn value_on_axis(&self, axis: usize, o: i32) -> Self::Value {
+        let (i, j, k) = axis_offset(axis, o);
+        self.value_at(i, j, k)
+    }
     /// The index-space coordinate of the center (used by map-aware operators).
     #[inline]
     fn center_coord(&self) -> Coord {
@@ -494,10 +500,7 @@ where
     S: StencilValues + ?Sized,
     S::Value: RealValue,
 {
-    d1_line(scheme, |o| {
-        let (i, j, k) = axis_offset(axis, o);
-        s.value_at(i, j, k)
-    })
+    d1_line(scheme, |o| s.value_on_axis(axis, o))
 }
 
 /// `D1<scheme>::inX`.
