@@ -10,6 +10,7 @@ pub mod node;
 pub mod root;
 #[allow(clippy::module_inception)]
 pub mod tree;
+pub mod value_source;
 
 pub use accessor::{ValueAccessor, ValueAccessorMut};
 pub use internal::InternalNode;
@@ -20,3 +21,4 @@ pub use tree::{
     BoolTree, DoubleTree, FloatTree, Int32Tree, Int64Tree, Internal1, Internal2, Tree, TreeBase, ValueItem, Vec3DTree,
     Vec3ITree, Vec3STree,
 };
+pub use value_source::ValueSource;
