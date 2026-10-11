@@ -78,7 +78,6 @@ impl<R: Read> Reader<R> {
         let b = self.read_bytes(n)?;
         Ok(String::from_utf8(b).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
     }
-
 }
 
 impl<R: Read + Seek> Reader<R> {
