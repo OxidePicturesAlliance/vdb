@@ -186,7 +186,7 @@ pub fn decompress_into(src: &[u8], dest: &mut [u8]) -> Result<()> {
 pub fn compress(src: &[u8], typesize: usize) -> Vec<u8> {
     let nbytes = src.len();
     let mut typesize = typesize.clamp(1, 255);
-    if !nbytes.is_multiple_of(typesize) {
+    if nbytes % typesize != 0 {
         // Splitting and shuffling need whole elements; fall back to bytes.
         typesize = 1;
     }

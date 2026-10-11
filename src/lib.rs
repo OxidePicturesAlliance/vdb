@@ -63,7 +63,11 @@
     clippy::neg_cmp_op_on_partial_ord,
     clippy::type_complexity,
     clippy::drop_non_drop,
-    clippy::should_implement_trait
+    clippy::should_implement_trait,
+    // `as_chunks` and `is_multiple_of` need Rust 1.88 / 1.90, newer than the MSRV (1.85).
+    clippy::chunks_exact_to_as_chunks,
+    clippy::manual_is_multiple_of,
+    unknown_lints
 )]
 
 pub mod grid;
