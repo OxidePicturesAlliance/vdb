@@ -64,7 +64,18 @@ pub fn decompressed_size(src: &[u8]) -> Result<usize> {
 
 /// Decompress a Blosc 1.x frame.
 pub fn decompress(src: &[u8]) -> Result<Vec<u8>> {
+    let mut dest = vec![0u8; decompressed_size(src)?];
+    decompress_into(src, &mut dest)?;
+    Ok(dest)
+}
+
+/// Decompress a Blosc 1.x frame into `dest`, whose length must equal the frame's
+/// uncompressed size.
+pub fn decompress_into(src: &[u8], dest: &mut [u8]) -> Result<()> {
     let nbytes = decompressed_size(src)?;
+    if nbytes != dest.len() {
+        return Err(err(format!("expected to decompress {} bytes, frame holds {}", dest.len(), nbytes)));
+    }
     let version = src[0];
     if version == 0 || version > FORMAT_VERSION {
         return Err(err(format!("unsupported Blosc format version {}", version)));
@@ -77,16 +88,15 @@ pub fn decompress(src: &[u8]) -> Result<Vec<u8>> {
         return Err(err("frame is truncated"));
     }
     let src = &src[..ctbytes.max(MAX_OVERHEAD)];
-    let mut dest = vec![0u8; nbytes];
     if nbytes == 0 {
-        return Ok(dest);
+        return Ok(());
     }
     if flags & MEMCPYED != 0 {
         if src.len() < MAX_OVERHEAD + nbytes {
             return Err(err("memcpy'd frame is truncated"));
         }
         dest.copy_from_slice(&src[MAX_OVERHEAD..MAX_OVERHEAD + nbytes]);
-        return Ok(dest);
+        return Ok(());
     }
     if flags & DOBITSHUFFLE != 0 {
         return Err(err("bit shuffle is not supported"));
@@ -155,7 +165,7 @@ pub fn decompress(src: &[u8]) -> Result<Vec<u8>> {
             dst.copy_from_slice(&tmp[..bsize]);
         }
     }
-    Ok(dest)
+    Ok(())
 }
 
 /// Compress `src` into a Blosc frame as OpenVDB does: byte shuffle with the given type
@@ -230,6 +240,27 @@ fn shuffle(typesize: usize, src: &[u8], dest: &mut [u8]) {
 
 /// Inverse of [`shuffle`].
 fn unshuffle(typesize: usize, src: &[u8], dest: &mut [u8]) {
+    match typesize {
+        4 => unshuffle_n::<4>(src, dest),
+        8 => unshuffle_n::<8>(src, dest),
+        _ => unshuffle_any(typesize, src, dest),
+    }
+}
+
+/// [`unshuffle`] for a type size known at compile time.
+fn unshuffle_n<const N: usize>(src: &[u8], dest: &mut [u8]) {
+    let n = src.len() / N;
+    let planes: [&[u8]; N] = std::array::from_fn(|j| &src[j * n..(j + 1) * n]);
+    for (i, out) in dest[..n * N].chunks_exact_mut(N).enumerate() {
+        for (o, plane) in out.iter_mut().zip(&planes) {
+            *o = plane[i];
+        }
+    }
+    let tail = n * N;
+    dest[tail..].copy_from_slice(&src[tail..]);
+}
+
+fn unshuffle_any(typesize: usize, src: &[u8], dest: &mut [u8]) {
     let n = src.len() / typesize;
     for i in 0..n {
         for j in 0..typesize {

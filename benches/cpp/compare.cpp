@@ -255,8 +255,11 @@ int main(int argc, char** argv)
             [](Unit&, std::string& b) { return std::to_string(b.size()) + " bytes"; });
         const std::string bytes = write();
         ctx.bench("read_" + label, [&] { return std::make_shared<std::istringstream>(bytes, std::ios_base::binary); },
-            [](std::shared_ptr<std::istringstream>& is) { io::Stream s(*is); return s.getGrids(); },
-            [](std::shared_ptr<std::istringstream>&, GridPtrVecPtr& g) { return count(*(*g)[0]); });
+            [](std::shared_ptr<std::istringstream>& is) { io::Stream s(*is, /*delayLoad=*/false); return s.getGrids(); },
+            [](std::shared_ptr<std::istringstream>&, GridPtrVecPtr& g) {
+                auto f = gridPtrCast<FloatGrid>((*g)[0]);
+                return count(*f) + fmt(" %.6e", sumActive(*f));
+            });
     }
 
     // ---- Level set tools ----
