@@ -156,6 +156,14 @@ impl<C: Node, const LOG2DIM: u32> InternalNode<C, LOG2DIM> {
         }
     }
 
+    /// The child in slot `n`, which must hold one.
+    #[inline]
+    fn child_ref(&self, n: usize) -> &C {
+        match &self.children[n] {
+            Some(c) => c,
+            None => unreachable!("child mask out of sync with children"),
+        }
+    }
     /// True if work over the children is worth splitting across threads.
     #[inline]
     fn par_children(&self) -> bool {
@@ -203,26 +211,31 @@ impl<C: Node, const LOG2DIM: u32> Node for InternalNode<C, LOG2DIM> {
     }
     #[inline]
     fn get_value(&self, xyz: &Coord) -> &C::Value {
+        // Test the (small, usually cached) child mask first, so that only one of the two
+        // slot arrays is touched.
         let n = Self::coord_to_offset(xyz);
-        match &self.children[n] {
-            Some(c) => c.get_value(xyz),
-            None => &self.values[n],
+        if self.child_mask.is_on(n) {
+            self.child_ref(n).get_value(xyz)
+        } else {
+            &self.values[n]
         }
     }
     #[inline]
     fn is_value_on(&self, xyz: &Coord) -> bool {
         let n = Self::coord_to_offset(xyz);
-        match &self.children[n] {
-            Some(c) => c.is_value_on(xyz),
-            None => self.value_mask.is_on(n),
+        if self.child_mask.is_on(n) {
+            self.child_ref(n).is_value_on(xyz)
+        } else {
+            self.value_mask.is_on(n)
         }
     }
     #[inline]
     fn lookup(&self, xyz: &Coord) -> super::node::Lookup<'_, C::Value> {
         let n = Self::coord_to_offset(xyz);
-        match &self.children[n] {
-            Some(c) => c.lookup(xyz),
-            None => super::node::Lookup::Tile { value: &self.values[n], active: self.value_mask.is_on(n), dim: C::DIM },
+        if self.child_mask.is_on(n) {
+            self.child_ref(n).lookup(xyz)
+        } else {
+            super::node::Lookup::Tile { value: &self.values[n], active: self.value_mask.is_on(n), dim: C::DIM }
         }
     }
     fn get_value_level(&self, xyz: &Coord) -> u32 {
@@ -346,7 +359,11 @@ impl<C: Node, const LOG2DIM: u32> Node for InternalNode<C, LOG2DIM> {
     }
     fn probe_leaf(&self, xyz: &Coord) -> Option<&LeafNode<C::Value>> {
         let n = Self::coord_to_offset(xyz);
-        self.children[n].as_deref()?.probe_leaf(xyz)
+        if self.child_mask.is_on(n) {
+            self.child_ref(n).probe_leaf(xyz)
+        } else {
+            None
+        }
     }
     fn probe_leaf_mut(&mut self, xyz: &Coord) -> Option<&mut LeafNode<C::Value>> {
         let n = Self::coord_to_offset(xyz);

@@ -23,7 +23,32 @@ pub trait ValueSource {
     fn is_value_on(&self, xyz: &Coord) -> bool {
         self.probe_value(xyz).1
     }
+    /// The values of the 2×2×2 cell whose lower corner is `ijk`, indexed `[dx][dy][dz]`.
+    #[inline]
+    fn get_cell_values(&self, ijk: &Coord) -> CellValues<Self::Value> {
+        let g = |i, j, k| self.get_value(&ijk.offset_by(i, j, k));
+        [[[g(0, 0, 0), g(0, 0, 1)], [g(0, 1, 0), g(0, 1, 1)]], [[g(1, 0, 0), g(1, 0, 1)], [g(1, 1, 0), g(1, 1, 1)]]]
+    }
+    /// Like [`get_cell_values`](Self::get_cell_values), also returning whether any of the
+    /// values is active.
+    #[inline]
+    fn probe_cell_values(&self, ijk: &Coord) -> (CellValues<Self::Value>, bool) {
+        let mut any = false;
+        let mut g = |i, j, k| {
+            let (v, on) = self.probe_value(&ijk.offset_by(i, j, k));
+            any |= on;
+            v
+        };
+        let d = [
+            [[g(0, 0, 0), g(0, 0, 1)], [g(0, 1, 0), g(0, 1, 1)]],
+            [[g(1, 0, 0), g(1, 0, 1)], [g(1, 1, 0), g(1, 1, 1)]],
+        ];
+        (d, any)
+    }
 }
+
+/// The values of a 2×2×2 cell, indexed `[dx][dy][dz]`.
+pub type CellValues<T> = [[[T; 2]; 2]; 2];
 
 impl<C: Node> ValueSource for TreeBase<C> {
     type Value = C::Value;
@@ -54,6 +79,14 @@ impl<C: Node> ValueSource for ValueAccessor<'_, C> {
     #[inline]
     fn is_value_on(&self, xyz: &Coord) -> bool {
         ValueAccessor::is_value_on(self, xyz)
+    }
+    #[inline]
+    fn get_cell_values(&self, ijk: &Coord) -> CellValues<C::Value> {
+        ValueAccessor::get_cell_values(self, ijk)
+    }
+    #[inline]
+    fn probe_cell_values(&self, ijk: &Coord) -> (CellValues<C::Value>, bool) {
+        ValueAccessor::probe_cell_values(self, ijk)
     }
 }
 
@@ -98,6 +131,14 @@ impl<S: ValueSource + ?Sized> ValueSource for &S {
     #[inline]
     fn is_value_on(&self, xyz: &Coord) -> bool {
         (**self).is_value_on(xyz)
+    }
+    #[inline]
+    fn get_cell_values(&self, ijk: &Coord) -> CellValues<S::Value> {
+        (**self).get_cell_values(ijk)
+    }
+    #[inline]
+    fn probe_cell_values(&self, ijk: &Coord) -> (CellValues<S::Value>, bool) {
+        (**self).probe_cell_values(ijk)
     }
 }
 

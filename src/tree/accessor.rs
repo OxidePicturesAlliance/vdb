@@ -6,6 +6,7 @@
 use super::leaf::LeafNode;
 use super::node::{Lookup, Node};
 use super::tree::TreeBase;
+use super::value_source::{CellValues, ValueSource};
 use crate::math::Coord;
 use crate::types::Value;
 use std::cell::Cell;
@@ -172,6 +173,45 @@ impl<'a, C: Node> ValueAccessor<'a, C> {
     pub fn probe_leaf(&self, xyz: &Coord) -> Option<&'a LeafNode<C::Value>> {
         self.find_leaf(xyz)
     }
+    /// The values of the 2×2×2 cell whose lower corner is `ijk`, indexed `[dx][dy][dz]`.
+    /// When the cell lies within one leaf-sized block, it is read with a single lookup.
+    #[inline]
+    pub fn get_cell_values(&self, ijk: &Coord) -> CellValues<C::Value> {
+        if !Self::cell_in_block(ijk) {
+            return ValueSource::get_cell_values(&ValueSourceDefault(self), ijk);
+        }
+        match self.lookup(ijk) {
+            Ok(leaf) => {
+                let b = leaf.buffer();
+                let n = LeafNode::<C::Value>::coord_to_offset(ijk);
+                [[[b[n], b[n + 1]], [b[n + 8], b[n + 9]]], [[b[n + 64], b[n + 65]], [b[n + 72], b[n + 73]]]]
+            }
+            Err((v, _)) => [[[v; 2]; 2]; 2],
+        }
+    }
+    /// Like [`get_cell_values`](Self::get_cell_values), also returning whether any of the
+    /// values is active.
+    #[inline]
+    pub fn probe_cell_values(&self, ijk: &Coord) -> (CellValues<C::Value>, bool) {
+        if !Self::cell_in_block(ijk) {
+            return ValueSource::probe_cell_values(&ValueSourceDefault(self), ijk);
+        }
+        match self.lookup(ijk) {
+            Ok(leaf) => {
+                let b = leaf.buffer();
+                let n = LeafNode::<C::Value>::coord_to_offset(ijk);
+                let m = leaf.value_mask();
+                let on = [0, 1, 8, 9, 64, 65, 72, 73].iter().any(|&d| m.is_on(n + d));
+                ([[[b[n], b[n + 1]], [b[n + 8], b[n + 9]]], [[b[n + 64], b[n + 65]], [b[n + 72], b[n + 73]]]], on)
+            }
+            Err((v, on)) => ([[[v; 2]; 2]; 2], on),
+        }
+    }
+    /// True if the cell with lower corner `ijk` doesn't cross an 8³ block boundary.
+    #[inline]
+    fn cell_in_block(ijk: &Coord) -> bool {
+        (ijk[0] & 7) < 7 && (ijk[1] & 7) < 7 && (ijk[2] & 7) < 7
+    }
     /// The top-level node (child of the root) containing `xyz`, if any (cached).
     #[inline]
     pub fn probe_top_node(&self, xyz: &Coord) -> Option<&'a C> {
@@ -180,6 +220,21 @@ impl<'a, C: Node> ValueAccessor<'a, C> {
     /// Depth of the value at `xyz` (see [`TreeBase::get_value_depth`]).
     pub fn get_value_depth(&self, xyz: &Coord) -> i32 {
         self.tree.get_value_depth(xyz)
+    }
+}
+
+/// Uses the trait's default (per-voxel) cell methods for an accessor.
+struct ValueSourceDefault<'r, 'a, C: Node>(&'r ValueAccessor<'a, C>);
+
+impl<C: Node> ValueSource for ValueSourceDefault<'_, '_, C> {
+    type Value = C::Value;
+    #[inline]
+    fn get_value(&self, xyz: &Coord) -> C::Value {
+        self.0.get_value(xyz)
+    }
+    #[inline]
+    fn probe_value(&self, xyz: &Coord) -> (C::Value, bool) {
+        self.0.probe_value(xyz)
     }
 }
 
@@ -435,5 +490,48 @@ mod tests {
         assert_eq!(acc.get_value(&Coord::new(1000, 1000, 1000)), 0.5);
         assert!(acc.is_value_on(&Coord::new(99, 198, -99)));
         assert_eq!(tree.leaf_count(), tree.leaves().count());
+    }
+
+    #[test]
+    fn cell_values_match_per_voxel_reads() {
+        use crate::math::CoordBBox;
+        use crate::tree::value_source::ValueSource;
+        let mut tree = FloatTree::new(0.5);
+        tree.fill(&CoordBBox::from_coords(-20, -20, -20, 40, 40, 40), -2.0, true);
+        tree.fill(&CoordBBox::from_coords(200, 0, 0, 455, 255, 255), 3.0, false);
+        let mut seed = 5u64;
+        let mut rnd = |n: i32| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as i32
+        };
+        {
+            let mut acc = tree.accessor_mut();
+            for _ in 0..20_000 {
+                let c = Coord::new(rnd(120) - 60, rnd(120) - 60, rnd(120) - 60);
+                if rnd(2) == 0 {
+                    acc.set_value(&c, rnd(100) as f32);
+                } else {
+                    acc.set_value_off(&c, -(rnd(100) as f32));
+                }
+            }
+        }
+        let acc = tree.accessor();
+        for _ in 0..50_000 {
+            let c = Coord::new(rnd(600) - 100, rnd(300) - 70, rnd(300) - 70);
+            let g = |i, j, k| tree.probe_value(&c.offset_by(i, j, k));
+            let mut expect = [[[0.0f32; 2]; 2]; 2];
+            let mut any = false;
+            for (i, plane) in expect.iter_mut().enumerate() {
+                for (j, row) in plane.iter_mut().enumerate() {
+                    for (k, v) in row.iter_mut().enumerate() {
+                        let (val, on) = g(i as i32, j as i32, k as i32);
+                        *v = val;
+                        any |= on;
+                    }
+                }
+            }
+            assert_eq!(ValueSource::get_cell_values(&acc, &c), expect, "at {c:?}");
+            assert_eq!(ValueSource::probe_cell_values(&acc, &c), (expect, any), "at {c:?}");
+        }
     }
 }

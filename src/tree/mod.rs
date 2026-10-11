@@ -21,4 +21,4 @@ pub use tree::{
     BoolTree, DoubleTree, FloatTree, Int32Tree, Int64Tree, Internal1, Internal2, Tree, TreeBase, ValueItem, Vec3DTree,
     Vec3ITree, Vec3STree,
 };
-pub use value_source::ValueSource;
+pub use value_source::{CellValues, ValueSource};
