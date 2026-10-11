@@ -186,9 +186,10 @@ impl<T: ToolValue, C: CsgNode<T>, const L: u32> CsgNode<T> for InternalNode<C, L
             }
         }
         if recurse {
-            self.child_pairs_mut(other).into_par_iter().with_min_len(if C::LEVEL == 0 { 32 } else { 1 }).for_each(
-                |(c, oc)| c.csg(oc, ctx),
-            );
+            self.child_pairs_mut(other)
+                .into_par_iter()
+                .with_min_len(if C::LEVEL == 0 { 32 } else { 1 })
+                .for_each(|(c, oc)| c.csg(oc, ctx));
         }
     }
 }

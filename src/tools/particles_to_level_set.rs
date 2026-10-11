@@ -20,8 +20,8 @@ use super::tree_ops::steal_leaves;
 use crate::grid::Grid;
 use crate::math::{Coord, CoordBBox, Vec3d};
 use crate::tree::{LeafNode, Node, Tree};
-use rayon::prelude::*;
 use crate::types::{RealValue, Value};
+use rayon::prelude::*;
 
 /// A list of particles (OpenVDB's `ParticleList` concept): positions (via [`PointArray`]),
 /// radii and optionally velocities, all in world units.
@@ -368,7 +368,8 @@ where
         .map(|t| {
             let mut sub = Tree::<V>::new(bg);
             let range = (t * chunk).min(buckets)..((t + 1) * chunk).min(buckets);
-            let (mi, ma) = raster_buckets::<T, A, V, P, F>(&mut sub, xform, particles, &att, prm, &mode, &partitioner, range);
+            let (mi, ma) =
+                raster_buckets::<T, A, V, P, F>(&mut sub, xform, particles, &att, prm, &mode, &partitioner, range);
             (sub, mi, ma)
         })
         .reduce_with(|(mut a, ami, ama), (b, bmi, bma)| {
