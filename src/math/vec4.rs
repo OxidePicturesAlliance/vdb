@@ -168,7 +168,7 @@ impl<T: Float> Vec4<T> {
         if d.abs() <= T::from(1.0e-7).unwrap() {
             return false;
         }
-        *self = *self * (T::one() / d);
+        *self *= T::one() / d;
         true
     }
     /// Component-wise absolute value.

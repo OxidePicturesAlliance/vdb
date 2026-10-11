@@ -476,7 +476,7 @@ pub fn trace_exterior_boundaries<T: RealValue>(tree: &mut Tree<T>) {
                     let mut ijk = [0i32; 3];
                     ijk[idx_a] = a;
                     ijk[idx_b] = b;
-                    let mut pos = ((ijk[0] << 6) | (ijk[1] << 3) | ijk[2]) as i32;
+                    let mut pos = (ijk[0] << 6) | (ijk[1] << 3) | ijk[2];
                     let mut offset = start;
                     while offset != INVALID_OFFSET && trace_voxel_line(nodes[offset].buffer_mut(), pos, step) {
                         last = offset;
@@ -1652,7 +1652,7 @@ impl<'a> GenEdgeData<'a> {
         if intersecting {
             self.tree.set_value(ijk, ed);
         }
-        dist < 0.86602540378443861
+        dist < 0.866_025_403_784_438_6
     }
 
     fn voxelize(&mut self, a: &Vec3d, b: &Vec3d, c: &Vec3d, d: Option<&Vec3d>, index: i32) {

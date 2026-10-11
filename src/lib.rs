@@ -55,6 +55,17 @@
 //! # fn main() {}
 //! ```
 
+// Deliberate style choices in a numerical port that mirrors OpenVDB's loops and types:
+// index loops over small fixed-size matrices and tables, `!(a < b)` to keep NaN semantics,
+// `drop(accessor)` to end a borrow of the tree, and OpenVDB-style `next`/`from_str` names.
+#![allow(
+    clippy::needless_range_loop,
+    clippy::neg_cmp_op_on_partial_ord,
+    clippy::type_complexity,
+    clippy::drop_non_drop,
+    clippy::should_implement_trait
+)]
+
 pub mod grid;
 #[cfg(any(feature = "read", feature = "write"))]
 pub mod io;

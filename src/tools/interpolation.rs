@@ -440,7 +440,7 @@ mod tests {
         // Linear fields are reproduced exactly; staggering shifts each component by half a voxel.
         let p = Vec3d::new(0.25, 0.5, -0.75);
         let v = StaggeredBoxSampler::sample(&vt, p);
-        assert!((v - Vec3::new(0.75, 10.0, 25.0 * -1.0)).length() < 1e-4, "{v:?}");
+        assert!((v - Vec3::new(0.75, 10.0, -25.0)).length() < 1e-4, "{v:?}");
         let v = BoxSampler::sample(&vt, p);
         assert!((v - Vec3::new(0.25, 5.0, -75.0)).length() < 1e-4);
         let sp = StaggeredPointSampler::sample(&vt, p);

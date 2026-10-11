@@ -660,7 +660,7 @@ impl<'a, T: P2lsValue, A: Value> ParticlesToLevelSet<'a, T, A> {
         }
         for leaf in steal_leaves(&mut blind, bg) {
             let origin = leaf.origin();
-            let mut sl = crate::tree::LeafNode::<T>::new(origin, sdf_tree.background().clone(), false);
+            let mut sl = crate::tree::LeafNode::<T>::new(origin, *sdf_tree.background(), false);
             let mut al = crate::tree::LeafNode::<A>::new(origin, bg.blind, false);
             *sl.value_mask_mut() = leaf.value_mask().clone();
             *al.value_mask_mut() = leaf.value_mask().clone();

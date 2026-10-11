@@ -630,9 +630,7 @@ impl CompositeValue for Vec3i {
         let (am, bm) = (a.length_sqr(), b.length_sqr());
         if am < bm {
             b
-        } else if bm < am {
-            a
-        } else if a.cwise_gt(&b) {
+        } else if bm < am || a.cwise_gt(&b) {
             a
         } else {
             b

@@ -183,8 +183,8 @@ fn volume_to_mesh_matches_cpp() {
 
     // The first points and quad of the uniform mesh.
     let (p, _, q) = volume_to_mesh_adaptive(&s1, 0.0, 0.0, true);
-    assert!((p[0] - Vec3f::new(-4.00015736, -2.50029349, -2.00030637)).length() < 1e-6, "{:?}", p[0]);
-    assert!((p[1] - Vec3f::new(-4.03020573, -2.375, -2.05883694)).length() < 1e-6, "{:?}", p[1]);
+    assert!((p[0] - Vec3f::new(-4.000_157_4, -2.500_293_5, -2.000_306_4)).length() < 1e-6, "{:?}", p[0]);
+    assert!((p[1] - Vec3f::new(-4.030_205_7, -2.375, -2.058_837)).length() < 1e-6, "{:?}", p[1]);
     assert_eq!(q[0], [11, 5, 4, 10]);
 
     // Reference (fracture seam) meshing.
@@ -247,18 +247,18 @@ fn point_scatter_and_index_grid_match_cpp() {
     let mut pl: Vec<Vec3d> = Vec::new();
     UniformPointScatter::with_count(&mut pl, 7777, &Mt19937::default(), 0.8).run(&grid);
     assert_eq!(pl.len(), 7777);
-    assert!(close(pl[0], [-1.3124528915503073, -9.8659965640021685, -0.1458091982812878]));
-    assert!(close(pl[1], [-1.4811117614528593, -9.5767331797971984, 1.8884136171930819]));
+    assert!(close(pl[0], [-1.3124528915503073, -9.865_996_564_002_169, -0.1458091982812878]));
+    assert!(close(pl[1], [-1.4811117614528593, -9.576_733_179_797_198, 1.8884136171930819]));
 
     let mut d: Vec<Vec3d> = Vec::new();
     DenseUniformPointScatter::new(&mut d, 0.3, &Mt19937::new(42), 1.0).run(&grid);
     assert_eq!(d.len(), 10984);
-    assert!(close(d[0], [-1.5270836212257832, -9.9515749192099712, 0.63984549880633068]));
+    assert!(close(d[0], [-1.5270836212257832, -9.951_574_919_209_971, 0.639_845_498_806_330_7]));
 
     let mut n: Vec<Vec3d> = Vec::new();
     NonUniformPointScatter::new(&mut n, 2.5, &Mt19937::new(7), 0.5).run(&grid);
     assert_eq!(n.len(), 11694);
-    assert!(close(n[1], [-1.5201569473096139, -10.103314141189847, 0.44096771019618586]));
+    assert!(close(n[1], [-1.520_156_947_309_614, -10.103314141189847, 0.44096771019618586]));
 
     let mut u: Vec<Vec3d> = Vec::new();
     UniformPointScatter::with_density(&mut u, 0.37, &Mt19937::new(12345), 1.0).run(&grid);
@@ -352,13 +352,13 @@ fn volume_to_spheres_matches_cpp() {
     let s2 = level_set_sphere(1.0, Vec3f::new(0.0, 0.0, 0.0), 0.1, 3.0);
     let spheres = fill_with_spheres(&s2, (1, 6), false, 1.0, f32::MAX, 0.0, 500);
     assert_eq!(spheres.len(), 6);
-    assert!((spheres[0][3] - 0.842390895).abs() < 1e-6);
-    assert!((spheres[5][0] - -0.220319211).abs() < 1e-6);
+    assert!((spheres[0][3] - 0.842_390_9).abs() < 1e-6);
+    assert!((spheres[5][0] - -0.220_319_21).abs() < 1e-6);
 
     let csp = ClosestSurfacePoint::create(&s1, 0.0).unwrap();
     let mut pts = vec![Vec3d::new(0.0, 0.0, 0.0), Vec3d::new(5.0, 1.0, -2.0)];
     let d = csp.search_and_replace(&mut pts);
-    assert!((d[0] - 2.62485695).abs() < 1e-6 && (d[1] - 2.43691325).abs() < 1e-6);
+    assert!((d[0] - 2.624_857).abs() < 1e-6 && (d[1] - 2.436_913_3).abs() < 1e-6);
     assert!((pts[0] - Vec3d::new(-1.44244361, 0.744722784, -2.06267262)).length() < 1e-6);
 }
 

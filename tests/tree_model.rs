@@ -72,7 +72,7 @@ fn random_operations_match_model() {
                     model.vox.insert(c, (val, false));
                 }
                 4 => {
-                    let on = rng.next() % 2 == 0;
+                    let on = rng.next().is_multiple_of(2);
                     tree.set_active_state(&c, on);
                     let (v, _) = model.get(&c);
                     model.vox.insert(c, (v, on));
@@ -80,7 +80,7 @@ fn random_operations_match_model() {
                 5 => {
                     let d = Coord::new(rng.range(0, 20), rng.range(0, 20), rng.range(0, 20));
                     let b = CoordBBox::new(c, (c + d).min_elem(&Coord::splat(HI)));
-                    let on = rng.next() % 3 != 0;
+                    let on = !rng.next().is_multiple_of(3);
                     tree.fill(&b, val, on);
                     for x in b {
                         model.vox.insert(x, (val, on));

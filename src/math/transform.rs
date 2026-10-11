@@ -427,7 +427,7 @@ mod tests {
             ty: "AffineMap",
             bytes: T4,
             vs: [0.5, 1.0, 1.5],
-            w: [3.8882404059298574, -0.25, 6.6478633067847017],
+            w: [3.8882404059298574, -0.25, 6.647_863_306_784_702],
             det: 0.75,
             uniform: false,
         };
@@ -437,7 +437,7 @@ mod tests {
             ty: "AffineMap",
             bytes: T5,
             vs: [0.49999999999999983, 1.0, 1.5],
-            w: [4.3487146832072634, 0.25, 7.2904856219635716],
+            w: [4.348_714_683_207_263, 0.25, 7.290_485_621_963_572],
             det: 0.75,
             uniform: false,
         };
@@ -446,8 +446,8 @@ mod tests {
         let e6 = Expect {
             ty: "AffineMap",
             bytes: T6,
-            vs: [0.47184870271698293, 1.0, 1.6081757415465205],
-            w: [5.8068118075999777, 0.25, 7.2904856219635716],
+            vs: [0.471_848_702_716_982_9, 1.0, 1.6081757415465205],
+            w: [5.806_811_807_599_978, 0.25, 7.290_485_621_963_572],
             det: 0.75,
             uniform: false,
         };
@@ -557,7 +557,7 @@ mod tests {
                 ty: "AffineMap",
                 bytes: V4,
                 vs: [1.0; 3],
-                w: [1.5, -3.2406422634324432, 1.8869917118141917],
+                w: [1.5, -3.240_642_263_432_443, 1.8869917118141917],
                 det: 1.0,
                 uniform: true,
             },
@@ -596,7 +596,7 @@ mod tests {
         assert!(!t.is_identity());
         assert!(!t.has_uniform_scale());
         assert_eq!(hex(&t), F1);
-        assert_eq!(t.voxel_size(), Vec3d::new(0.025000000000000001, 0.025000000000000001, 0.016666666666666666));
+        assert_eq!(t.voxel_size(), Vec3d::new(0.025, 0.025, 0.016666666666666666));
         assert_eq!(t.voxel_volume(), 0.015625);
         t.post_translate(Vec3d::new(1.0, 2.0, 3.0));
         assert_eq!(hex(&t), F2);
@@ -617,7 +617,7 @@ mod tests {
         t.post_rotate(0.3, Axis::Z);
         let b = t.index_coord_bbox_to_world(&CoordBBox::from_coords(0, 0, 0, 10, 20, 30));
         assert!(b.min().is_approx_equal(&Vec3d::new(-2.9552020666133956, 0.0, 0.0), 1e-14));
-        assert!(b.max().is_approx_equal(&Vec3d::new(4.7766824456280297, 11.030965924562757, 15.0), 1e-14));
+        assert!(b.max().is_approx_equal(&Vec3d::new(4.776_682_445_628_03, 11.030965924562757, 15.0), 1e-14));
         assert_eq!(t.world_to_index_cell_centered_bbox(&b), CoordBBox::from_coords(-6, -3, 0, 16, 23, 30));
         let (lo, hi) = t.index_to_world_bbox(&CoordBBox::from_coords(0, 0, 0, 10, 20, 30));
         assert_eq!((lo, hi), (b.min(), b.max()));

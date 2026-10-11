@@ -95,7 +95,8 @@ fn compositing() {
     b.tree_mut().fill(&CoordBBox::new(Coord::splat(10), Coord::splat(40)), -1.0, true);
     a.tree_mut().set_value(&Coord::new(-5, 0, 0), 7.0);
     b.tree_mut().set_value_off(&Coord::new(-5, 0, 1), 9.0);
-    let cases: [(&str, fn(&mut Grid<f32>, &mut Grid<f32>), f64); 5] = [
+    type CompFn = fn(&mut Grid<f32>, &mut Grid<f32>);
+    let cases: [(&str, CompFn, f64); 5] = [
         ("compMax", comp_max, 56250.0),
         ("compMin", comp_min, -13929.0),
         ("compSum", comp_sum, 42321.0),

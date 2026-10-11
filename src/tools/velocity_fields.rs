@@ -184,7 +184,7 @@ mod tests {
         // Values from the C++ EnrightField<float>.
         let f = EnrightField::<f32>::new();
         let v = f.eval(Vec3d::new(0.3, 0.6, 0.1), 0.5);
-        let e = [-0.391663909f32, -0.437893242, 0.0462296456];
+        let e = [-0.391_663_9_f32, -0.437_893_24, 0.046_229_646];
         for i in 0..3 {
             assert!((v[i] - e[i]).abs() < 1e-6, "{v:?}");
         }

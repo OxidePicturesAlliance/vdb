@@ -139,7 +139,7 @@ impl<T: Float> Quat<T> {
         if is_approx_equal_tol(d, T::zero(), eps) {
             return false;
         }
-        *self = *self * (T::one() / d);
+        *self *= T::one() / d;
         true
     }
     /// A unit-length copy, or `None` for the zero quaternion.
@@ -232,7 +232,7 @@ pub fn slerp<T: Float>(q1: &Quat<T>, q2: &Quat<T>, t: T, tolerance: T) -> Quat<T
         if length_sqr <= tolerance * tolerance {
             q = if t < lit(0.5) { *q1 } else { *q2 };
         } else {
-            q = q * (T::one() / length_sqr.sqrt());
+            q *= T::one() / length_sqr.sqrt();
         }
         q
     } else {
@@ -254,7 +254,7 @@ pub fn slerp_mat3<T: FloatTolerance>(m1: &Mat3<T>, m2: &Mat3<T>, t: T) -> Option
     let q1 = Quat::from_mat3(m1)?;
     let mut q2 = Quat::from_mat3(m2)?;
     if q1.dot(&q2) < T::zero() {
-        q2 = q2 * -T::one();
+        q2 *= -T::one();
     }
     Some(slerp(&q1, &q2, t, lit(0.00001)).to_mat3())
 }
