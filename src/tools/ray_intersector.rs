@@ -21,17 +21,17 @@ pub use crate::math::ray::{Dda, Ray, TimeSpan};
 /// `math::Delta<double>`.
 const DELTA_D: f64 = crate::math::DELTA_F64;
 
-/// True if a node of the given level (0 = leaf, 1, 2) exists at `ijk`.
+/// True if a node of the given level (0 = leaf, 1, 2) exists at `ijk` (looked up through
+/// the accessor's cached nodes, like OpenVDB's `probeConstNode`).
 #[inline]
-fn has_node<T: Value>(tree: &Tree<T>, level: i32, ijk: &Coord) -> bool {
+fn has_node<T: Value>(acc: &ValueAccessor<'_, Internal2<T>>, level: i32, ijk: &Coord) -> bool {
     match level {
-        0 => tree.probe_leaf(ijk).is_some(),
-        1 => tree
-            .root()
-            .probe_child(ijk)
+        0 => acc.probe_leaf(ijk).is_some(),
+        1 => acc
+            .probe_top_node(ijk)
             .map(|n2: &Internal2<T>| n2.child(Internal2::<T>::coord_to_offset(ijk)).is_some())
             .unwrap_or(false),
-        _ => tree.root().probe_child(ijk).is_some(),
+        _ => acc.probe_top_node(ijk).is_some(),
     }
 }
 
@@ -138,7 +138,7 @@ impl<'a, T: RealValue> LinearSearch<'a, T> {
     fn hdda_nodes<const LOG2: u32>(&mut self, tree: &Tree<T>, level: i32) -> bool {
         let mut dda = Dda::<f64, LOG2>::new(&self.ray);
         loop {
-            if has_node(tree, level, &dda.voxel()) {
+            if has_node(self.stencil.accessor(), level, &dda.voxel()) {
                 self.ray.set_times(dda.time(), dda.next());
                 if self.hdda(tree, level - 1) {
                     return true;
@@ -359,12 +359,12 @@ impl<'a, T: Value> VolumeRayIntersector<'a, T> {
 
 /// Classification of a DDA cell during a volume march.
 #[inline]
-fn vhdda_cell(tree: &Tree<bool>, acc: &ValueAccessor<'_, Internal2<bool>>, level: i32, ijk: &Coord) -> (bool, bool) {
+fn vhdda_cell(acc: &ValueAccessor<'_, Internal2<bool>>, level: i32, ijk: &Coord) -> (bool, bool) {
     // (has child node at this level, is an active value/leaf)
     if level == 0 {
-        (false, tree.probe_leaf(ijk).is_some() || acc.is_value_on(ijk))
+        (false, acc.probe_leaf(ijk).is_some() || acc.is_value_on(ijk))
     } else {
-        let child = has_node(tree, level, ijk);
+        let child = has_node(acc, level, ijk);
         (child, !child && acc.is_value_on(ijk))
     }
 }
@@ -382,7 +382,7 @@ fn vhdda_march_at<const LOG2: u32>(tree: &Tree<bool>, ray: &mut Ray, t: &mut Tim
     let acc = tree.accessor();
     let mut dda = Dda::<f64, LOG2>::new(ray);
     loop {
-        let (child, active) = vhdda_cell(tree, &acc, level, &dda.voxel());
+        let (child, active) = vhdda_cell(&acc, level, &dda.voxel());
         if child {
             ray.set_times(dda.time(), dda.next());
             if vhdda_march(tree, ray, t, level - 1) {
@@ -428,7 +428,7 @@ fn vhdda_hits_at<const LOG2: u32>(
     let acc = tree.accessor();
     let mut dda = Dda::<f64, LOG2>::new(ray);
     loop {
-        let (child, active) = vhdda_cell(tree, &acc, level, &dda.voxel());
+        let (child, active) = vhdda_cell(&acc, level, &dda.voxel());
         if child {
             ray.set_times(dda.time(), dda.next());
             vhdda_hits(tree, ray, out, t, level - 1);

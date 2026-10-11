@@ -15,7 +15,7 @@ use super::finite_difference::{godunovs_norm_sqrd, weno5, StencilValues};
 use super::operators::MapJacobian;
 use super::{Coord, Vec3, Vec3d};
 use crate::grid::Grid;
-use crate::tree::{Internal2, ValueAccessor};
+use crate::tree::{Internal2, LeafNode, ValueAccessor};
 use crate::types::{ArithValue, RealValue, Value};
 use std::borrow::Cow;
 use std::ops::{Deref, DerefMut};
@@ -216,6 +216,10 @@ pub struct BaseStencil<'a, T: Value> {
     grid: &'a Grid<T>,
     acc: ValueAccessor<'a, Internal2<T>>,
     offsets: Cow<'static, [[i32; 3]]>,
+    /// The offsets as differences of linear positions within a leaf.
+    leaf_offsets: Vec<i32>,
+    /// The leaf that contained the last center (with its origin), if any.
+    leaf: Option<(Coord, &'a LeafNode<T>)>,
     lut: Vec<u16>,
     radius: i32,
     side: i32,
@@ -230,6 +234,8 @@ impl<'a, T: Value> Clone for BaseStencil<'a, T> {
             grid: self.grid,
             acc: ValueAccessor::new(self.grid.tree()),
             offsets: self.offsets.clone(),
+            leaf_offsets: self.leaf_offsets.clone(),
+            leaf: self.leaf,
             lut: self.lut.clone(),
             radius: self.radius,
             side: self.side,
@@ -256,10 +262,13 @@ impl<'a, T: Value> BaseStencil<'a, T> {
             }
         }
         let size = offsets.len();
+        let leaf_offsets = offsets.iter().map(|o| (o[0] << 6) + (o[1] << 3) + o[2]).collect();
         BaseStencil {
             grid,
             acc: ValueAccessor::new(grid.tree()),
             offsets,
+            leaf_offsets,
+            leaf: None,
             lut,
             radius,
             side,
@@ -272,19 +281,54 @@ impl<'a, T: Value> BaseStencil<'a, T> {
     /// Fill the buffer with the values around `ijk`.
     #[inline]
     pub fn move_to(&mut self, ijk: &Coord) {
-        self.center = *ijk;
-        for (v, o) in self.values.iter_mut().zip(self.offsets.iter()) {
-            *v = self.acc.get_value(&ijk.offset_by(o[0], o[1], o[2]));
-        }
+        self.fill(ijk, None)
     }
 
     /// Fill the buffer around `ijk`, using the already known `center_value` for the center.
     #[inline]
     pub fn move_to_with_center(&mut self, ijk: &Coord, center_value: T) {
+        self.fill(ijk, Some(center_value))
+    }
+
+    #[inline]
+    fn fill(&mut self, ijk: &Coord, center_value: Option<T>) {
         self.center = *ijk;
+        let origin = ijk.align_down(8);
+        let leaf = match self.leaf {
+            Some((o, l)) if o == origin => Some(l),
+            _ => {
+                let l = self.acc.probe_leaf(ijk);
+                self.leaf = l.map(|l| (origin, l));
+                l
+            }
+        };
         let cp = self.center_pos;
-        for (n, (v, o)) in self.values.iter_mut().zip(self.offsets.iter()).enumerate() {
-            *v = if n == cp { center_value } else { self.acc.get_value(&ijk.offset_by(o[0], o[1], o[2])) };
+        let Some(leaf) = leaf else {
+            for (n, (v, o)) in self.values.iter_mut().zip(self.offsets.iter()).enumerate() {
+                *v = match center_value {
+                    Some(c) if n == cp => c,
+                    _ => self.acc.get_value(&ijk.offset_by(o[0], o[1], o[2])),
+                };
+            }
+            return;
+        };
+        // Neighbors inside the center's leaf are read from its buffer, the others through
+        // the accessor.
+        let buf = leaf.buffer();
+        let base = LeafNode::<T>::coord_to_offset(ijk) as i32;
+        let (lx, ly, lz) = (ijk[0] & 7, ijk[1] & 7, ijk[2] & 7);
+        for (n, ((v, o), lo)) in self.values.iter_mut().zip(self.offsets.iter()).zip(self.leaf_offsets.iter()).enumerate()
+        {
+            *v = match center_value {
+                Some(c) if n == cp => c,
+                _ => {
+                    if (((lx + o[0]) | (ly + o[1]) | (lz + o[2])) as u32) < 8 {
+                        buf[(base + lo) as usize]
+                    } else {
+                        self.acc.get_value(&ijk.offset_by(o[0], o[1], o[2]))
+                    }
+                }
+            };
         }
     }
 

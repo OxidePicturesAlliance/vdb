@@ -18,7 +18,7 @@
 
 use super::tree_ops::topology_copy;
 use crate::grid::{Grid, GridClass, VecType};
-use crate::math::finite_difference::{AccessorAt, DDScheme, DScheme};
+use crate::math::finite_difference::{DDScheme, DScheme, StencilValues};
 use crate::math::operators::{self as ops, MapJacobian};
 use crate::math::{Coord, Vec3};
 use crate::tree::{Internal2, LeafNode, Node, Tree, ValueAccessor};
@@ -27,20 +27,51 @@ use rayon::prelude::*;
 
 type Acc<'a, T> = ValueAccessor<'a, Internal2<T>>;
 
+/// The input values around a voxel. Neighbors in the voxel's own leaf (if it has one) are
+/// read from the leaf buffer, the others through the accessor.
+pub struct LeafAt<'s, 't, T: Value> {
+    acc: &'s Acc<'t, T>,
+    ijk: Coord,
+    buf: Option<&'t [T]>,
+}
+
+impl<'s, 't, T: Value> LeafAt<'s, 't, T> {
+    #[inline]
+    fn new(acc: &'s Acc<'t, T>, ijk: Coord, leaf: Option<&'t LeafNode<T>>) -> Self {
+        LeafAt { acc, ijk, buf: leaf.map(|l| l.buffer()) }
+    }
+}
+
+impl<T: Value> StencilValues for LeafAt<'_, '_, T> {
+    type Value = T;
+    #[inline]
+    fn value_at(&self, i: i32, j: i32, k: i32) -> T {
+        let (x, y, z) = ((self.ijk[0] & 7) + i, (self.ijk[1] & 7) + j, (self.ijk[2] & 7) + k);
+        match self.buf {
+            Some(buf) if ((x | y | z) as u32) < 8 => buf[((x << 6) | (y << 3) | z) as usize],
+            _ => self.acc.get_value(&self.ijk.offset_by(i, j, k)),
+        }
+    }
+    #[inline]
+    fn center_coord(&self) -> Coord {
+        self.ijk
+    }
+}
+
 /// The generic driver (`gridop::GridOperator::process`).
 fn process<T, U, M, F>(input: &Grid<T>, mask: Option<&Grid<M>>, densify: bool, op: F) -> Grid<U>
 where
     T: Value,
     U: Value,
     M: Value,
-    F: Fn(&MapJacobian, &AccessorAt<'_, Acc<'_, T>>) -> U + Sync + Send,
+    F: Fn(&MapJacobian, &LeafAt<'_, '_, T>) -> U + Sync + Send,
 {
     let map = MapJacobian::new(input.transform());
     // The background is the operator applied to a constant (empty) tree.
     let empty = Tree::new(*input.background());
     let bg = {
         let acc = empty.accessor();
-        op(&map, &AccessorAt::new(&acc, Coord::origin()))
+        op(&map, &LeafAt::new(&acc, Coord::origin(), None))
     };
     let mut tree = topology_copy(input.tree(), bg);
     if densify || mask.is_some() {
@@ -66,10 +97,11 @@ where
         || itree.accessor(),
         |acc, leaf: &mut LeafNode<U>| {
             let origin = leaf.origin();
+            let input_leaf = itree.probe_leaf(&origin);
             let (buf, vmask) = leaf.buffer_and_mask_mut();
             for n in vmask.iter_on() {
                 let ijk = origin + LeafNode::<U>::offset_to_local_coord(n);
-                buf[n] = op(&map, &AccessorAt::new(acc, ijk));
+                buf[n] = op(&map, &LeafAt::new(acc, ijk, input_leaf));
             }
         },
     );
@@ -77,7 +109,7 @@ where
         let acc = itree.accessor();
         tree.visit_tiles_mut(&mut |bbox, v, on, _| {
             if *on {
-                *v = op(&map, &AccessorAt::new(&acc, bbox.min));
+                *v = op(&map, &LeafAt::new(&acc, bbox.min, None));
             }
         });
     } else {

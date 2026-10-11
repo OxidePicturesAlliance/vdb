@@ -172,6 +172,11 @@ impl<'a, C: Node> ValueAccessor<'a, C> {
     pub fn probe_leaf(&self, xyz: &Coord) -> Option<&'a LeafNode<C::Value>> {
         self.find_leaf(xyz)
     }
+    /// The top-level node (child of the root) containing `xyz`, if any (cached).
+    #[inline]
+    pub fn probe_top_node(&self, xyz: &Coord) -> Option<&'a C> {
+        self.top_node(xyz)
+    }
     /// Depth of the value at `xyz` (see [`TreeBase::get_value_depth`]).
     pub fn get_value_depth(&self, xyz: &Coord) -> i32 {
         self.tree.get_value_depth(xyz)
