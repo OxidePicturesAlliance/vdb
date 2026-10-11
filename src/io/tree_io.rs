@@ -210,6 +210,27 @@ where
     C: NodeIo<T>,
     R: Read,
 {
+    let (mut tree, ctx) = read_tree_topology::<T, C, R>(r, file_version, compression, half, leaf_format)?;
+    for child in tree.root_mut().children_mut() {
+        child.read_buffers(r, &ctx)?;
+    }
+    Ok(tree)
+}
+
+/// Read a tree's topology only (buffer count, root, internal nodes and leaf masks); also
+/// returns the context for reading its buffers.
+pub(crate) fn read_tree_topology<T, C, R>(
+    r: &mut Reader<R>,
+    file_version: u32,
+    compression: Compression,
+    half: bool,
+    leaf_format: LeafFormat,
+) -> Result<(crate::tree::TreeBase<C>, TreeCtx<T>)>
+where
+    T: IoValue,
+    C: NodeIo<T>,
+    R: Read,
+{
     let buffer_count = r.read_i32()?;
     if buffer_count != 1 {
         // Multi-buffer trees are no longer supported by OpenVDB either; only the first is used.
@@ -230,10 +251,7 @@ where
         let child = C::read_topology(r, key, &ctx)?;
         root.table_mut().insert(key, RootEntry::Child(Box::new(child)));
     }
-    for child in root.children_mut() {
-        child.read_buffers(r, &ctx)?;
-    }
-    Ok(crate::tree::TreeBase::from_root(root))
+    Ok((crate::tree::TreeBase::from_root(root), ctx))
 }
 
 /// Write a tree's topology (buffer count, root, internal nodes and leaf masks).

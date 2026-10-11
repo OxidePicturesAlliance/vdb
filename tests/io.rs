@@ -332,27 +332,56 @@ fn typed_grids_all_compressions() {
 }
 
 #[test]
-fn unsupported_grid_types_are_skipped() {
+fn point_data_grids_are_loaded() {
     let file = File::open(data("points.vdb")).unwrap();
     assert_eq!(file.descriptors().len(), 2);
     let pts = &file.descriptors()[0];
     assert_eq!(pts.grid_type, "Tree_ptdataidx32_5_4_3");
     assert_eq!(pts.value_type(), Some("ptdataidx32"));
-    assert!(!pts.is_supported());
-    // Metadata of unsupported grids can still be read.
+    assert!(pts.is_supported());
     let gm = file.read_grid_metadata("points").unwrap();
     assert_eq!(gm.metadata.get("file_voxel_count"), Some(&MetaValue::Int64(4)));
-    assert!(matches!(file.read_grid("points"), Err(io::Error::UnsupportedGridType(_))));
+    let points = file.read_grid("points").unwrap();
+    assert_eq!(vdb::points::point_count(points.as_point_data().unwrap().tree()), 4);
 
     let (_, grids) = io::read_file(data("points.vdb")).unwrap();
-    assert_eq!(grids.len(), 1);
-    assert_eq!(grids[0].name(), "after_points");
-    assert_eq!(grids[0].as_float().unwrap().get_value(&Coord::new(3, 2, 1)), 42.0);
-
-    // Sequential reading skips the grid using its end offset.
+    assert_eq!(grids.len(), 2);
+    assert_eq!(grids[1].name(), "after_points");
+    assert_eq!(grids[1].as_float().unwrap().get_value(&Coord::new(3, 2, 1)), 42.0);
     let s = io::Stream::read(std::fs::File::open(data("points.vdb")).unwrap()).unwrap();
+    assert!(s.grids[0].as_ref().unwrap().as_point_data().is_some());
+}
+
+#[test]
+fn unsupported_grid_types_are_skipped() {
+    // Write two grids, then rename the first one's type to an unknown (same-length) type.
+    let mut a = FloatGrid::new(0.0).with_name("unknown");
+    a.set_value(&Coord::new(1, 1, 1), 1.0);
+    let mut b = FloatGrid::new(0.0).with_name("after");
+    b.set_value(&Coord::new(3, 2, 1), 42.0);
+    let mut bytes = Vec::new();
+    io::write_to(&mut bytes, &[a.into(), b.into()], &MetaMap::new(), &WriteOptions::default()).unwrap();
+    let pat = b"Tree_float_5_4_3";
+    let pos = bytes.windows(pat.len()).position(|w| w == pat).unwrap();
+    bytes[pos..pos + pat.len()].copy_from_slice(b"Tree_fl0at_5_4_3");
+    let path = scratch_dir("unsupported").join("unsupported.vdb");
+    std::fs::write(&path, &bytes).unwrap();
+
+    let file = File::open(&path).unwrap();
+    let d = &file.descriptors()[0];
+    assert_eq!(d.value_type(), Some("fl0at"));
+    assert!(!d.is_supported());
+    // Metadata of unsupported grids can still be read.
+    let gm = file.read_grid_metadata("unknown").unwrap();
+    assert_eq!(gm.metadata.get("file_voxel_count"), Some(&MetaValue::Int64(1)));
+    assert!(matches!(file.read_grid("unknown"), Err(io::Error::UnsupportedGridType(_))));
+    let (_, grids) = io::read_file(&path).unwrap();
+    assert_eq!(grids.len(), 1);
+    assert_eq!(grids[0].as_float().unwrap().get_value(&Coord::new(3, 2, 1)), 42.0);
+    // Sequential reading skips the grid using its end offset.
+    let s = io::Stream::read(&bytes[..]).unwrap();
     assert!(s.grids[0].is_none());
-    assert_eq!(s.grids[1].as_ref().unwrap().name(), "after_points");
+    assert_eq!(s.grids[1].as_ref().unwrap().name(), "after");
 }
 
 #[test]

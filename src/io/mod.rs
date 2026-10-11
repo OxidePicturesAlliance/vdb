@@ -43,6 +43,7 @@ mod compression;
 mod error;
 mod file;
 mod metadata_io;
+mod points_io;
 mod transform_io;
 mod tree_io;
 mod value_io;

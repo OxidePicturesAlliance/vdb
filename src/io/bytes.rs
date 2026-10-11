@@ -65,7 +65,8 @@ impl<R: Read> Reader<R> {
     }
 
     read_prim!(
-        read_u8 -> u8, read_i8 -> i8, read_u32 -> u32, read_i32 -> i32, read_i64 -> i64,
+        read_u8 -> u8, read_i8 -> i8, read_u16 -> u16, read_u32 -> u32, read_i32 -> i32, read_i64 -> i64,
+        read_u64 -> u64,
     );
 
     pub fn read_bool(&mut self) -> Result<bool> {
@@ -94,6 +95,13 @@ pub(crate) trait WriteLe {
     fn put_u32(&mut self, v: u32);
     fn put_i32(&mut self, v: i32);
     fn put_i64(&mut self, v: i64);
+    fn put_u16(&mut self, v: u16) {
+        self.put_u8(v as u8);
+        self.put_u8((v >> 8) as u8);
+    }
+    fn put_u64(&mut self, v: u64) {
+        self.put_i64(v as i64);
+    }
     /// Write an OpenVDB string (`u32` length + bytes).
     fn put_string(&mut self, s: &str);
 }
