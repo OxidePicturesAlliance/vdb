@@ -25,7 +25,10 @@ pub enum MetaValue {
     Mat4s(Mat4s),
     Mat4d(Mat4d),
     /// Metadata of a type this library does not know, kept verbatim so it can be rewritten.
-    Unknown { type_name: String, data: Vec<u8> },
+    Unknown {
+        type_name: String,
+        data: Vec<u8>,
+    },
 }
 
 impl MetaValue {

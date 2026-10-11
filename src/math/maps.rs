@@ -56,10 +56,12 @@ impl MapBase {
         let mtm = m3 * m3.transpose();
         let s = mtm.0[0][0];
         let tol = 1e-6 * s.abs().max(1.0);
-        (0..3).all(|i| (0..3).all(|j| {
-            let e = if i == j { s } else { 0.0 };
-            (mtm.0[i][j] - e).abs() <= tol
-        }))
+        (0..3).all(|i| {
+            (0..3).all(|j| {
+                let e = if i == j { s } else { 0.0 };
+                (mtm.0[i][j] - e).abs() <= tol
+            })
+        })
     }
     pub fn is_identity(&self) -> bool {
         self.affine_matrix().is_approx_equal(&Mat4d::identity(), 1e-12)

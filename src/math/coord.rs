@@ -48,11 +48,7 @@ impl Coord {
     /// Round each component of a floating-point position to the nearest integer.
     #[inline]
     pub fn round(xyz: Vec3d) -> Self {
-        Coord([
-            (xyz[0] + 0.5).floor() as i32,
-            (xyz[1] + 0.5).floor() as i32,
-            (xyz[2] + 0.5).floor() as i32,
-        ])
+        Coord([(xyz[0] + 0.5).floor() as i32, (xyz[1] + 0.5).floor() as i32, (xyz[2] + 0.5).floor() as i32])
     }
     /// Floor each component of a floating-point position.
     #[inline]
@@ -66,11 +62,7 @@ impl Coord {
     }
     #[inline]
     pub fn offset_by(&self, dx: i32, dy: i32, dz: i32) -> Self {
-        Coord([
-            self.0[0].wrapping_add(dx),
-            self.0[1].wrapping_add(dy),
-            self.0[2].wrapping_add(dz),
-        ])
+        Coord([self.0[0].wrapping_add(dx), self.0[1].wrapping_add(dy), self.0[2].wrapping_add(dz)])
     }
     #[inline]
     pub fn offset(&self, n: i32) -> Self {
@@ -162,11 +154,7 @@ impl Sub for Coord {
     type Output = Coord;
     #[inline]
     fn sub(self, o: Coord) -> Coord {
-        Coord([
-            self.0[0].wrapping_sub(o.0[0]),
-            self.0[1].wrapping_sub(o.0[1]),
-            self.0[2].wrapping_sub(o.0[2]),
-        ])
+        Coord([self.0[0].wrapping_sub(o.0[0]), self.0[1].wrapping_sub(o.0[1]), self.0[2].wrapping_sub(o.0[2])])
     }
 }
 impl AddAssign for Coord {

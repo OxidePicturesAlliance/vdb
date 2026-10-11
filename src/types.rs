@@ -109,8 +109,15 @@ mod tests {
 
 /// Floating-point scalar values (`f32`, `f64`), as required by level-set and filtering tools.
 pub trait RealValue:
-    Value + TypeName + num_traits::Float + num_traits::FloatConst + std::iter::Sum + std::ops::AddAssign + std::ops::SubAssign
-    + std::ops::MulAssign + std::ops::DivAssign
+    Value
+    + TypeName
+    + num_traits::Float
+    + num_traits::FloatConst
+    + std::iter::Sum
+    + std::ops::AddAssign
+    + std::ops::SubAssign
+    + std::ops::MulAssign
+    + std::ops::DivAssign
 {
     fn from_f64(v: f64) -> Self;
     fn to_f64(self) -> f64;

@@ -222,7 +222,11 @@ impl<C: Node> TreeBase<C> {
                 tiles.push(ValueItem { bbox, value: *v, level });
             }
         });
-        tiles.into_iter().chain(self.active_voxels().map(|(c, v)| ValueItem { bbox: CoordBBox::new(c, c), value: v, level: 0 }))
+        tiles.into_iter().chain(self.active_voxels().map(|(c, v)| ValueItem {
+            bbox: CoordBBox::new(c, c),
+            value: v,
+            level: 0,
+        }))
     }
     /// Visit every tile (root and internal): `f(bbox, value, active, level)`.
     pub fn visit_tiles(&self, f: &mut dyn FnMut(CoordBBox, &C::Value, bool, u32)) {
