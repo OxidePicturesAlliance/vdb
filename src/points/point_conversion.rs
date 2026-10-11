@@ -302,7 +302,7 @@ pub fn compute_voxel_size<P: PointArray + ?Sized>(
     let target_voxel_count = (num_points / points_per_voxel as usize).max(1);
 
     // Bounds of the positions in the transform's (unit-scaled) frame.
-    let inverse = transform.inverse(0.0).unwrap_or(Mat4d::identity());
+    let inverse = transform.inverse(0.0).unwrap_or_else(Mat4d::identity);
     let inverse = unit_mat4(&inverse);
     let (min, max) = (0..num_points)
         .into_par_iter()

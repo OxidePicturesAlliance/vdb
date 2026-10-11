@@ -94,7 +94,8 @@ pub use point_sample::{
 };
 pub use point_scatter::{dense_uniform_point_scatter, non_uniform_point_scatter, uniform_point_scatter};
 pub use point_statistics::{
-    accumulate, accumulate_tree, eval_average, eval_average_tree, eval_min_max, eval_min_max_trees, StatValue,
+    accumulate, accumulate_tree, eval_average, eval_average_tree, eval_min_max, eval_min_max_trees, MinMaxTrees,
+    StatValue,
 };
 
 use thiserror::Error;

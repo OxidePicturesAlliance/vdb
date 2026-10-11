@@ -218,7 +218,7 @@ pub(crate) fn std_shuffle<T, G: RandomGenerator>(v: &mut [T], g: &mut G) {
     let urngrange = u32::MAX as u64;
     if urngrange / n >= n {
         let mut i = 1usize;
-        if n % 2 == 0 {
+        if n.is_multiple_of(2) {
             let j = uniform_int(g, 0, 1) as usize;
             v.swap(i, j);
             i += 1;

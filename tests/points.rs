@@ -327,7 +327,7 @@ fn rust_grids(large: bool) -> Vec<AnyGrid> {
         grid.set_name(&format!("rust_{}", codec));
         if k == 0 || k == 1 {
             let tree = grid.tree_mut();
-            let ids: Vec<i32> = (0..n as i32).collect();
+            let ids: Vec<i32> = (0..n).collect();
             append_typed_attribute(tree, "id", Codec::Null, 0i32, 1, None, false, false).unwrap();
             populate_attribute(tree, index.tree(), "id", &ids, 1).unwrap();
             let normals: Vec<Vec3f> = pos.iter().map(|p| p.unit()).collect();

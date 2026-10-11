@@ -7,8 +7,11 @@
 //!   version 224 with library version 10.0, readable by OpenVDB 4 and later.
 //! * Grid types `Tree_{float,double,int32,int64,bool,vec3s,vec3d,vec3i,mask}_5_4_3`,
 //!   loaded as the corresponding [`AnyGrid`] variant (mask grids become
-//!   [`AnyGrid::Mask`]). Grids of other types (e.g. point data grids) are listed in the
-//!   descriptors but skipped when loading.
+//!   [`AnyGrid::Mask`]). Point data grids (`Tree_ptdataidx32_5_4_3`, loaded as
+//!   [`AnyGrid::PointData`], with OpenVDB's multi-pass leaf buffers and paged attribute
+//!   streams) and point index grids (`Tree_ptidx32_5_4_3`, [`AnyGrid::PointIndex`]) are
+//!   supported too. Grids of other types are listed in the descriptors but skipped when
+//!   loading.
 //! * Compression: none, zip, active-value masks and Blosc (implemented in pure Rust,
 //!   see [`blosc`]), plus 16-bit half-float storage of floating-point grids.
 //! * Instanced grids (grids sharing another grid's tree) are resolved on read; the writer

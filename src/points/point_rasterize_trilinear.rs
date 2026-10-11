@@ -175,7 +175,7 @@ pub fn rasterize_trilinear<T: TrilinearSource, F: IndexFilter>(
             Some(true) => leaf.node_bbox(),
             None => leaf.active_bbox(),
         };
-        let mut weights = vec![zero; 512];
+        let mut weights = [zero; 512];
         let (buf, mask) = leaf.buffer_and_mask_mut();
         let mut cache: Handles<'_, T> = None;
         for_each_nearby_point(points, bounds.expanded(1), filter, |pl, ijk, id| {
@@ -194,7 +194,7 @@ pub fn rasterize_trilinear<T: TrilinearSource, F: IndexFilter>(
             if b.is_empty() {
                 return;
             }
-            let pe = p.map(|c| cast::<T::Elem>(c));
+            let pe = p.map(cast::<T::Elem>);
             for c in b.iter() {
                 let offset = LeafNode::<T>::coord_to_offset(&c);
                 if !mask.is_on(offset) {
@@ -239,7 +239,7 @@ where
             Some(true) => leaf.node_bbox(),
             None => leaf.active_bbox(),
         };
-        let mut weights = vec![Vec3::splat(zero); 512];
+        let mut weights = [Vec3::splat(zero); 512];
         let (buf, mask) = leaf.buffer_and_mask_mut();
         let mut cache: Handles<'_, T> = None;
         for_each_nearby_point(points, bounds.expanded(1), filter, |pl, ijk, id| {
@@ -248,7 +248,7 @@ where
             if b.is_empty() {
                 return;
             }
-            let p = ph.get(id).map(|c| cast::<T::Elem>(c));
+            let p = ph.get(id).map(cast::<T::Elem>);
             let s = sh.get(id);
             for c in b.iter() {
                 let offset = LeafNode::<u32>::coord_to_offset(&c);
@@ -264,8 +264,8 @@ where
                     mac[1] * center[0] * center[2],
                     mac[2] * center[0] * center[1],
                 );
-                buf[offset] = buf[offset] + s.stagger(r);
-                weights[offset] = weights[offset] + r;
+                buf[offset] += s.stagger(r);
+                weights[offset] += r;
             }
         });
         for n in mask.iter_on() {

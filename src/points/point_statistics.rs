@@ -139,13 +139,17 @@ fn combine_extents<T: StatValue>(exts: &[Option<(T, T)>]) -> Option<(T, T)> {
     })
 }
 
+/// Overall `(min, max)` plus the per-leaf minimum and maximum trees returned by
+/// [`eval_min_max_trees`].
+pub type MinMaxTrees<T> = ((T, T), Tree<T>, Tree<T>);
+
 /// Like [`eval_min_max`], also returning trees with each leaf's minimum and maximum as
 /// active leaf-sized tiles.
 pub fn eval_min_max_trees<T: StatValue, F: IndexFilter>(
     tree: &PointDataTree,
     attribute: &str,
     filter: &F,
-) -> Option<((T, T), Tree<T>, Tree<T>)> {
+) -> Option<MinMaxTrees<T>> {
     let pos = attribute_position(tree, attribute)?;
     let exts = leaf_extents::<T, F>(tree, pos, filter);
     let result = combine_extents(&exts)?;

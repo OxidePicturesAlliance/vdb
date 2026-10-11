@@ -764,8 +764,8 @@ mod tests {
     #[test]
     fn unit_vec() {
         assert_eq!(pack_unit_vec(Vec3f::zero()), 0);
-        assert_eq!(normalization_weights()[0], 0.007936508395);
-        assert_eq!(normalization_weights()[127], 0.007873771712);
+        assert_eq!(normalization_weights()[0], 0.007_936_508);
+        assert_eq!(normalization_weights()[127], 0.007_873_772);
         for v in [
             Vec3f::new(1.0, 0.0, 0.0),
             Vec3f::new(0.0, -1.0, 0.0),
