@@ -187,8 +187,9 @@ impl<const LOG2DIM: u32> NodeMask<LOG2DIM> {
         MaskOnIter { words: self.w(), wi: 0, cur: self.w().first().copied().unwrap_or(0), size: Self::SIZE }
     }
     /// Iterate over the indices of the off bits.
-    pub fn iter_off(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..Self::SIZE).filter(move |&i| self.is_off(i))
+    pub fn iter_off(&self) -> MaskOffIter<'_> {
+        let t = Self::tail_mask();
+        MaskOffIter { words: self.w(), wi: 0, cur: !self.w()[0] & t, tail: t }
     }
     /// Raw words (for serialization).
     #[inline]
@@ -285,6 +286,34 @@ impl Iterator for MaskOnIter<'_> {
     }
 }
 
+/// Iterator over the off bits of a [`NodeMask`].
+pub struct MaskOffIter<'a> {
+    words: &'a [u64],
+    wi: usize,
+    cur: u64,
+    /// Valid bits of a word (only less than all for masks smaller than a word).
+    tail: u64,
+}
+
+impl Iterator for MaskOffIter<'_> {
+    type Item = usize;
+    #[inline]
+    fn next(&mut self) -> Option<usize> {
+        loop {
+            if self.cur != 0 {
+                let b = self.cur.trailing_zeros() as usize;
+                self.cur &= self.cur - 1;
+                return Some((self.wi << 6) + b);
+            }
+            self.wi += 1;
+            if self.wi >= self.words.len() {
+                return None;
+            }
+            self.cur = !self.words[self.wi] & self.tail;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,5 +339,24 @@ mod tests {
         assert!(s.is_all_on());
         s.toggle_all();
         assert!(s.is_all_off());
+    }
+
+    #[test]
+    fn iter_off_matches_is_off() {
+        let mut m3 = NodeMask::<3>::new();
+        let mut m1 = NodeMask::<1>::new();
+        let mut m4 = NodeMask::<4>::new();
+        for i in [0usize, 5, 63, 64, 100, 300, 511] {
+            m3.set_on(i);
+            m4.set_on(i * 7);
+        }
+        m1.set_on(3);
+        m1.set_on(7);
+        assert_eq!(m3.iter_off().collect::<Vec<_>>(), (0..512).filter(|&i| m3.is_off(i)).collect::<Vec<_>>());
+        assert_eq!(m4.iter_off().collect::<Vec<_>>(), (0..4096).filter(|&i| m4.is_off(i)).collect::<Vec<_>>());
+        assert_eq!(m1.iter_off().collect::<Vec<_>>(), vec![0, 1, 2, 4, 5, 6]);
+        m3.set_all_on();
+        assert_eq!(m3.iter_off().count(), 0);
+        assert_eq!(NodeMask::<1>::new().iter_off().count(), 8);
     }
 }
