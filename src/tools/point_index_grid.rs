@@ -105,13 +105,24 @@ impl PointIndexTree {
     pub fn point_count(&self) -> usize {
         self.indices.values().map(|v| v.len()).sum()
     }
+    /// A tree from its offset tree and the index arrays of its leaves, keyed by leaf origin
+    /// (used by file I/O).
+    pub fn from_parts(tree: Tree<u32>, indices: HashMap<Coord, Vec<u32>>) -> Self {
+        PointIndexTree { tree, indices }
+    }
+    /// The index arrays of the leaves, keyed by leaf origin.
+    pub fn indices_map(&self) -> &HashMap<Coord, Vec<u32>> {
+        &self.indices
+    }
 }
 
-/// A point index grid (OpenVDB's `PointIndexGrid`): a [`PointIndexTree`] and a transform.
+/// A point index grid (OpenVDB's `PointIndexGrid`): a [`PointIndexTree`], a transform and
+/// metadata.
 #[derive(Clone, Default)]
 pub struct PointIndexGrid {
     tree: PointIndexTree,
     transform: Transform,
+    meta: crate::metadata::MetaMap,
 }
 
 impl PointIndexGrid {
@@ -121,12 +132,24 @@ impl PointIndexGrid {
     pub fn transform(&self) -> &Transform {
         &self.transform
     }
+    /// A grid from its parts (used by file I/O).
+    pub fn from_parts(tree: PointIndexTree, transform: Transform, meta: crate::metadata::MetaMap) -> Self {
+        PointIndexGrid { tree, transform, meta }
+    }
+    /// The grid metadata.
+    pub fn metadata(&self) -> &crate::metadata::MetaMap {
+        &self.meta
+    }
+    /// The grid metadata, mutably.
+    pub fn metadata_mut(&mut self) -> &mut crate::metadata::MetaMap {
+        &mut self.meta
+    }
 }
 
 /// Partition points into a point index grid with the given transform
 /// (`tools::createPointIndexGrid`).
 pub fn create_point_index_grid<P: PointArray + ?Sized>(points: &P, xform: &Transform) -> PointIndexGrid {
-    let mut grid = PointIndexGrid { tree: PointIndexTree::default(), transform: xform.clone() };
+    let mut grid = PointIndexGrid { transform: xform.clone(), ..Default::default() };
     if points.size() == 0 {
         return grid;
     }

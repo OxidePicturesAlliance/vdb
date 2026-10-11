@@ -300,6 +300,8 @@ pub enum AnyGrid {
     Mask(BoolGrid),
     /// A point data grid (OpenVDB's `PointDataGrid`, tree type `"Tree_ptdataidx32_5_4_3"`).
     PointData(crate::points::PointDataGrid),
+    /// A point index grid (OpenVDB's `PointIndexGrid`, tree type `"Tree_ptidx32_5_4_3"`).
+    PointIndex(crate::tools::point_index_grid::PointIndexGrid),
 }
 
 /// Run an expression on the typed grid inside an [`AnyGrid`].
@@ -317,6 +319,7 @@ macro_rules! with_any_grid {
             $crate::grid::AnyGrid::Vec3I($g) => $body,
             $crate::grid::AnyGrid::Mask($g) => $body,
             $crate::grid::AnyGrid::PointData($g) => $body,
+            $crate::grid::AnyGrid::PointIndex($g) => $body,
         }
     };
 }
@@ -359,6 +362,7 @@ impl AnyGrid {
             AnyGrid::Vec3I(_) => Vec3IGrid::grid_type(),
             AnyGrid::Mask(_) => "Tree_mask_5_4_3".to_string(),
             AnyGrid::PointData(_) => crate::points::PointDataGrid::grid_type(),
+            AnyGrid::PointIndex(_) => crate::tools::point_index_grid::PointIndexGrid::grid_type(),
         }
     }
     /// The point data grid, if this is an [`AnyGrid::PointData`].
@@ -443,6 +447,31 @@ any_grid_conv!(
 impl From<crate::points::PointDataGrid> for AnyGrid {
     fn from(g: crate::points::PointDataGrid) -> Self {
         AnyGrid::PointData(g)
+    }
+}
+
+impl From<crate::tools::point_index_grid::PointIndexGrid> for AnyGrid {
+    fn from(g: crate::tools::point_index_grid::PointIndexGrid) -> Self {
+        AnyGrid::PointIndex(g)
+    }
+}
+
+impl AnyGrid {
+    /// The point index grid, if this is an [`AnyGrid::PointIndex`].
+    pub fn as_point_index(&self) -> Option<&crate::tools::point_index_grid::PointIndexGrid> {
+        if let AnyGrid::PointIndex(g) = self {
+            Some(g)
+        } else {
+            None
+        }
+    }
+    /// Convert into the point index grid, if this is an [`AnyGrid::PointIndex`].
+    pub fn into_point_index(self) -> Option<crate::tools::point_index_grid::PointIndexGrid> {
+        if let AnyGrid::PointIndex(g) = self {
+            Some(g)
+        } else {
+            None
+        }
     }
 }
 

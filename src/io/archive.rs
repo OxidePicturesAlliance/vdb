@@ -229,6 +229,7 @@ pub(crate) enum GridKind {
     Vec3D,
     Vec3I,
     PointData,
+    PointIndex,
 }
 
 impl GridKind {
@@ -244,6 +245,7 @@ impl GridKind {
             "Tree_vec3d_5_4_3" => GridKind::Vec3D,
             "Tree_vec3i_5_4_3" => GridKind::Vec3I,
             "Tree_ptdataidx32_5_4_3" => GridKind::PointData,
+            "Tree_ptidx32_5_4_3" => GridKind::PointIndex,
             _ => return None,
         })
     }
@@ -332,6 +334,11 @@ pub(crate) fn read_grid_tree<R: Read>(
             *g.metadata_mut() = meta;
             AnyGrid::PointData(g)
         }
+        GridKind::PointIndex => {
+            let tree =
+                if read_tree_data { super::points_io::read_point_index_tree(r, v, c)? } else { Default::default() };
+            AnyGrid::PointIndex(crate::tools::point_index_grid::PointIndexGrid::from_parts(tree, transform, meta))
+        }
     })
 }
 
@@ -345,6 +352,20 @@ pub(crate) fn copy_tree_from(grid: &mut AnyGrid, parent: &AnyGrid) -> Result<()>
                 _ => return Err(Error::corrupt("instanced grid and its parent have different types")),
             }
         };
+    }
+    match (&mut *grid, parent) {
+        (AnyGrid::PointIndex(g), AnyGrid::PointIndex(p)) => {
+            *g = crate::tools::point_index_grid::PointIndexGrid::from_parts(
+                p.tree().clone(),
+                g.transform().clone(),
+                g.metadata().clone(),
+            );
+            return Ok(());
+        }
+        (AnyGrid::PointIndex(_), _) | (_, AnyGrid::PointIndex(_)) => {
+            return Err(Error::corrupt("instanced grid and its parent have different types"))
+        }
+        _ => {}
     }
     copy!(Float, Double, Int32, Int64, Bool, Mask, Vec3S, Vec3D, Vec3I, PointData);
     Ok(())
@@ -463,6 +484,9 @@ fn write_grid(
         AnyGrid::Vec3I(g) => tree!(g, LeafFormat::Standard),
         AnyGrid::PointData(g) => {
             super::points_io::write_point_data_tree(out, g.tree(), compression, &mut desc.block_pos);
+        }
+        AnyGrid::PointIndex(g) => {
+            super::points_io::write_point_index_tree(out, g.tree(), compression, &mut desc.block_pos);
         }
     }
     desc.end_pos = out.len() as i64;

@@ -24,8 +24,9 @@ use super::bytes::{Reader, WriteLe};
 use super::compression::{read_mask, write_mask, Compression};
 use super::error::{Error, Result};
 use super::metadata_io::{read_meta_map, write_meta_map};
-use super::tree_io::{read_tree_topology, write_ctx, write_tree_topology, LeafFormat};
+use super::tree_io::{read_tree_topology, write_ctx, write_tree_topology, LeafFormat, NodeIo};
 use crate::points::{AttributeArray, AttributeSet, AttributeType, Descriptor, PointDataTree, PointLeaf};
+use crate::tools::point_index_grid::PointIndexTree;
 use crate::tree::{Internal2, LeafNode, Node, Tree};
 use rayon::prelude::*;
 use std::borrow::Cow;
@@ -575,6 +576,53 @@ pub(crate) fn write_point_data_tree(
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Point index trees
+
+/// Read a point index tree (`PointIndexLeafNode::readBuffers`: the standard leaf buffers
+/// followed by the leaf's index array and an auxiliary data block).
+pub(crate) fn read_point_index_tree<R: Read>(
+    r: &mut Reader<R>,
+    file_version: u32,
+    compression: Compression,
+) -> Result<PointIndexTree> {
+    let (mut tree, ctx) =
+        read_tree_topology::<u32, Internal2<u32>, R>(r, file_version, compression, false, LeafFormat::Standard)?;
+    let mut indices = HashMap::new();
+    for leaf in tree.leaf_refs_mut() {
+        leaf.read_buffers(r, &ctx)?;
+        let n = r.read_u64()? as usize;
+        let bytes = r.read_bytes(n.checked_mul(4).ok_or_else(|| Error::corrupt("index count overflow"))?)?;
+        let idx: Vec<u32> = bytes.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+        let aux = r.read_u64()?;
+        r.skip(aux)?;
+        indices.insert(leaf.origin(), idx);
+    }
+    Ok(PointIndexTree::from_parts(tree, indices))
+}
+
+/// Write a point index tree's topology and buffers.
+pub(crate) fn write_point_index_tree(
+    out: &mut Vec<u8>,
+    tree: &PointIndexTree,
+    compression: Compression,
+    block_pos: &mut i64,
+) {
+    let offsets = tree.tree();
+    let ctx = write_ctx(offsets, compression, false, LeafFormat::Standard);
+    write_tree_topology(out, offsets, &ctx);
+    *block_pos = out.len() as i64;
+    for leaf in offsets.leaves() {
+        leaf.write_buffers(out, &ctx);
+        let idx = tree.indices_map().get(&leaf.origin()).map(|v| v.as_slice()).unwrap_or(&[]);
+        out.put_u64(idx.len() as u64);
+        for i in idx {
+            out.put_u32(*i);
+        }
+        out.put_u64(0); // auxiliary data, reserved
     }
 }
 

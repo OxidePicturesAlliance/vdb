@@ -128,6 +128,41 @@ void dumpPointGrid(std::ostream& os, const PointDataGrid& grid)
     }
 }
 
+// Point index grids are read with a clipping box: OpenVDB 10's unclipped
+// PointIndexLeafNode::readBuffers() does not consume the auxiliary data block, so it can
+// only read grids with a single leaf.
+int dumpIndex(const std::string& path)
+{
+    io::File file(path);
+    file.open(/*delayLoad=*/false);
+    for (auto it = file.beginName(); it != file.endName(); ++it) {
+        GridBase::ConstPtr base = file.readGridMetadata(it.gridName());
+        if (base->type() != tools::PointIndexGrid::gridType()) continue;
+        GridBase::Ptr g = file.readGrid(it.gridName(), BBoxd(Vec3d(-1e6), Vec3d(1e6)));
+        const auto& grid = static_cast<const tools::PointIndexGrid&>(*g);
+        std::cout << "grid " << grid.getName() << "\n";
+        const math::Mat4d m = grid.transform().baseMap()->getAffineMap()->getMat4();
+        std::cout << "  transform";
+        for (int i = 0; i < 16; ++i) std::cout << " " << hex(f64bits(m.asPointer()[i]));
+        std::cout << "\n  leaf_count " << grid.tree().leafCount() << "\n";
+        for (auto leaf = grid.tree().cbeginLeaf(); leaf; ++leaf) {
+            const Coord o = leaf->origin();
+            std::cout << "  leaf " << o.x() << " " << o.y() << " " << o.z() << " on " << leaf->onVoxelCount()
+                      << " offsets";
+            uint64_t h = 0xcbf29ce484222325ULL;
+            for (Index i = 0; i < 512; ++i) {
+                const uint32_t v = leaf->getValue(i);
+                h = fnv(&v, 4, h);
+            }
+            std::cout << " " << hex(h) << " indices";
+            for (auto idx : leaf->indices()) std::cout << " " << idx;
+            std::cout << "\n";
+        }
+    }
+    file.close();
+    return 0;
+}
+
 int dump(const std::string& path)
 {
     io::File file(path);
@@ -295,6 +330,16 @@ int gen(const std::string& dir)
             io::COMPRESS_BLOSC | io::COMPRESS_ACTIVE_MASK);
     }
 
+    // A point index grid (mirrored by point_index_grid_from_cpp).
+    {
+        const std::vector<Vec3f> pos = positions();
+        PointAttributeVector<Vec3f> wrapper(pos);
+        tools::PointIndexGrid::Ptr index = tools::createPointIndexGrid<tools::PointIndexGrid>(
+            wrapper, *math::Transform::createLinearTransform(0.25));
+        index->setName("pindex");
+        write(dir + "/points_index.vdb", {index}, io::COMPRESS_BLOSC | io::COMPRESS_ACTIVE_MASK);
+    }
+
     // An empty grid and a grid with points in inactive voxels.
     {
         PointDataGrid::Ptr empty = PointDataGrid::create();
@@ -317,6 +362,7 @@ int main(int argc, char** argv)
     openvdb::initialize();
     if (argc == 3 && std::string(argv[1]) == "gen") return gen(argv[2]);
     if (argc == 3 && std::string(argv[1]) == "dump") return dump(argv[2]);
+    if (argc == 3 && std::string(argv[1]) == "dumpindex") return dumpIndex(argv[2]);
     std::cerr << "usage: points_ref gen <outdir> | dump <file.vdb>\n";
     return 2;
 }

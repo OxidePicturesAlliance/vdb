@@ -31,12 +31,14 @@ pub mod attribute_string;
 pub mod codec;
 pub mod index_filter;
 pub mod index_iterator;
+pub mod point_advect;
 pub mod point_attribute;
 pub mod point_conversion;
 pub mod point_count;
 pub mod point_data_grid;
 pub mod point_delete;
 pub mod point_group;
+pub mod point_index;
 pub mod point_mask;
 pub mod point_move;
 pub mod point_rasterize_sdf;
@@ -55,6 +57,7 @@ pub use index_filter::{
     LevelSetFilter, MultiGroupFilter, NullFilter, RandomLeafFilter,
 };
 pub use index_iterator::{IndexIter, IndexState, VoxelSelection};
+pub use point_advect::{advect_points, AdvectionDeformer};
 pub use point_attribute::{
     append_attribute, append_string_attribute, append_typed_attribute, collapse_attribute, collapse_string_attribute,
     compact_attributes, drop_attribute, drop_attributes, drop_attributes_by_name, rename_attribute, rename_attributes,

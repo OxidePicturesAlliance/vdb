@@ -388,6 +388,60 @@ fn rust_written_files_roundtrip() {
     assert_eq!(group_point_count(grid.tree(), "all"), 3000);
 }
 
+/// Canonical description of the point index grids of a file, as `points_ref dumpindex`
+/// prints it.
+fn dump_index_file(path: &Path) -> String {
+    let (_, grids) = io::read_file(path).unwrap();
+    let mut out = String::new();
+    for g in grids.iter().filter_map(|g| g.as_point_index()) {
+        writeln!(out, "grid {}", g.name()).unwrap();
+        let m = g.transform().map().affine_matrix();
+        out.push_str("  transform");
+        for v in m.0.iter().flatten() {
+            write!(out, " {}", hex(v.to_bits())).unwrap();
+        }
+        writeln!(out, "\n  leaf_count {}", g.tree().leaf_count()).unwrap();
+        for leaf in g.tree().leaves() {
+            let o = leaf.origin();
+            let mut h = FNV_INIT;
+            for v in leaf.leaf().buffer() {
+                h = fnv(&v.to_le_bytes(), h);
+            }
+            write!(
+                out,
+                "  leaf {} {} {} on {} offsets {} indices",
+                o[0],
+                o[1],
+                o[2],
+                leaf.leaf().on_voxel_count(),
+                hex(h)
+            )
+            .unwrap();
+            for i in leaf.indices() {
+                write!(out, " {}", i).unwrap();
+            }
+            out.push('\n');
+        }
+    }
+    out
+}
+
+#[test]
+fn point_index_grid_from_cpp() {
+    let path = data("points").join("points_index.vdb");
+    let expected = std::fs::read_to_string(data("points").join("points_index.dump.txt")).unwrap();
+    assert_same_dump(&dump_index_file(&path), &expected, "points_index");
+    let grid = io::read_grid(&path, "pindex").unwrap().into_point_index().unwrap();
+    let pos: Vec<Vec3f> = (0..N).map(position).collect();
+    assert!(vdb::tools::point_index_grid::is_valid_partition(&pos, &grid));
+    // The same partition is built in Rust, and it round-trips through a file.
+    let rust =
+        vdb::tools::point_index_grid::create_point_index_grid(&pos, &Transform::linear(0.25)).with_name("pindex");
+    let out = scratch_dir("points_index").join("index.vdb");
+    io::write_file(&out, &[rust.into()], &MetaMap::new()).unwrap();
+    assert_same_dump(&dump_index_file(&out), &expected, "rust points_index");
+}
+
 // ---------------------------------------------------------------------------
 // C++ interoperability
 
@@ -423,6 +477,17 @@ fn cpp_reads_rust_points() {
             let cpp = String::from_utf8(out.stdout).unwrap();
             assert_same_dump(&dump_points_file(&path), &cpp, &format!("{}_{}", name, k));
         }
+    }
+    // Point index grids.
+    let pos: Vec<Vec3f> =
+        (0..5000).map(|i| Vec3f::new((i as f32 * 0.37).sin() * 9.0, (i % 97) as f32 * 0.1, 0.0)).collect();
+    let index = vdb::tools::point_index_grid::create_point_index_grid(&pos, &Transform::linear(0.3)).with_name("idx");
+    for (k, opts) in all_options().iter().enumerate() {
+        let path = dir.join(format!("index_{}.vdb", k));
+        io::write_file_with_options(&path, &[index.clone().into()], &MetaMap::new(), opts).unwrap();
+        let out = std::process::Command::new(&bin).arg("dumpindex").arg(&path).output().unwrap();
+        assert!(out.status.success(), "index: {}", String::from_utf8_lossy(&out.stderr));
+        assert_same_dump(&dump_index_file(&path), &String::from_utf8(out.stdout).unwrap(), &format!("index_{}", k));
     }
 }
 
