@@ -50,7 +50,7 @@ pub trait Sampler<T: Value> {
 
 #[inline]
 fn floor_coord(v: Vec3d) -> Coord {
-    Coord::new(v[0].floor() as i32, v[1].floor() as i32, v[2].floor() as i32)
+    Coord::floor(v)
 }
 
 /// Round half away from zero, like C's `round()`.
@@ -89,23 +89,12 @@ impl BoxSampler {
     /// `[dx][dy][dz]`.
     #[inline]
     pub fn get_values<S: ValueSource + ?Sized>(src: &S, ijk: Coord) -> [[[S::Value; 2]; 2]; 2] {
-        let g = |i, j, k| src.get_value(&ijk.offset_by(i, j, k));
-        [[[g(0, 0, 0), g(0, 0, 1)], [g(0, 1, 0), g(0, 1, 1)]], [[g(1, 0, 0), g(1, 0, 1)], [g(1, 1, 0), g(1, 1, 1)]]]
+        src.get_cell_values(&ijk)
     }
     /// Like [`get_values`](Self::get_values), also returning whether any corner is active.
     #[inline]
     pub fn probe_values<S: ValueSource + ?Sized>(src: &S, ijk: Coord) -> ([[[S::Value; 2]; 2]; 2], bool) {
-        let mut any = false;
-        let mut g = |i, j, k| {
-            let (v, on) = src.probe_value(&ijk.offset_by(i, j, k));
-            any |= on;
-            v
-        };
-        let d = [
-            [[g(0, 0, 0), g(0, 0, 1)], [g(0, 1, 0), g(0, 1, 1)]],
-            [[g(1, 0, 0), g(1, 0, 1)], [g(1, 1, 0), g(1, 1, 1)]],
-        ];
-        (d, any)
+        src.probe_cell_values(&ijk)
     }
     /// The smallest and largest of the eight corner values.
     pub fn extrema<T: Value + PartialOrd>(data: &[[[T; 2]; 2]; 2]) -> (T, T) {
