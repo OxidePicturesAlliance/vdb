@@ -19,7 +19,7 @@
 //! ```
 
 use super::interpolation::AlphaMask;
-use super::leaf_buffers::{masked_voxel_pass, write_leaf_buffers, MaskSpec};
+use super::leaf_buffers::{masked_leaf_voxel_pass, masked_voxel_pass, write_leaf_buffers, MaskSpec};
 use crate::grid::Grid;
 use crate::math::stencils::DenseStencil;
 use crate::types::{ArithValue, RealValue, Value};
@@ -80,16 +80,28 @@ impl<'a, T: ArithValue> Filter<'a, T> {
     fn box_pass<M: RealValue + ArithValue>(&mut self, axis: usize, w: i32, mask: Option<&Grid<M>>) {
         let frac = (1.0f32 / (2 * w + 1) as f32) as f64;
         let spec = self.mask_spec(mask);
-        let bufs = masked_voxel_pass(
+        // Offset between neighbors along `axis` within a leaf.
+        let stride = [64i32, 8, 1][axis];
+        let bufs = masked_leaf_voxel_pass(
             &*self.grid,
             spec,
             |g| g.accessor(),
-            move |acc, xyz, _| {
-                let mut c = *xyz;
+            move |acc, leaf, n, xyz, _| {
                 let mut sum = <T as Value>::zero();
-                for i in xyz[axis] - w..=xyz[axis] + w {
-                    c[axis] = i;
-                    sum = sum + acc.get_value(&c);
+                let local = xyz[axis] & 7;
+                if local >= w && local + w <= 7 {
+                    // All the neighbors are in this leaf: read its buffer directly (summing in
+                    // the same order as below, so the result is the same).
+                    let buf = leaf.buffer();
+                    for k in -w..=w {
+                        sum = sum + buf[(n as i32 + k * stride) as usize];
+                    }
+                } else {
+                    let mut c = *xyz;
+                    for i in xyz[axis] - w..=xyz[axis] + w {
+                        c[axis] = i;
+                        sum = sum + acc.get_value(&c);
+                    }
                 }
                 sum.scale(frac)
             },
