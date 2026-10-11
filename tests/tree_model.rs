@@ -1,4 +1,6 @@
 //! Randomized model-based tests: the VDB tree must behave like a dense map of voxels.
+// `is_multiple_of` needs Rust 1.90, newer than the MSRV (1.85).
+#![allow(clippy::manual_is_multiple_of, unknown_lints)]
 
 use std::collections::HashMap;
 use vdb::math::{Coord, CoordBBox};
@@ -72,7 +74,7 @@ fn random_operations_match_model() {
                     model.vox.insert(c, (val, false));
                 }
                 4 => {
-                    let on = rng.next().is_multiple_of(2);
+                    let on = rng.next() % 2 == 0;
                     tree.set_active_state(&c, on);
                     let (v, _) = model.get(&c);
                     model.vox.insert(c, (v, on));
@@ -80,7 +82,7 @@ fn random_operations_match_model() {
                 5 => {
                     let d = Coord::new(rng.range(0, 20), rng.range(0, 20), rng.range(0, 20));
                     let b = CoordBBox::new(c, (c + d).min_elem(&Coord::splat(HI)));
-                    let on = !rng.next().is_multiple_of(3);
+                    let on = rng.next() % 3 != 0;
                     tree.fill(&b, val, on);
                     for x in b {
                         model.vox.insert(x, (val, on));
