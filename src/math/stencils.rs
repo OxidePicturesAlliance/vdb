@@ -48,6 +48,8 @@ pub enum StencilKind {
 }
 
 const SEVEN_PT: [[i32; 3]; 7] = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]];
+/// Position in [`BOX_PT`] of the offset `(i, j, k)`, indexed by `4i + 2j + k`.
+const BOX_INDEX: [usize; 8] = [0, 1, 3, 2, 4, 5, 7, 6];
 const BOX_PT: [[i32; 3]; 8] = [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 0, 0], [1, 0, 1], [1, 1, 1], [1, 1, 0]];
 const DENSE_PT: [[i32; 3]; 19] = [
     [0, 0, 0],
@@ -558,7 +560,8 @@ impl<T: RealValue> BoxStencil<'_, T> {
         let u = T::from_f64(xyz[0] - c[0] as f64);
         let v = T::from_f64(xyz[1] - c[1] as f64);
         let w = T::from_f64(xyz[2] - c[2] as f64);
-        let g = |i, j, k| self.value(i, j, k);
+        let vals: &[T; 8] = self.values().try_into().unwrap();
+        let g = |i: usize, j: usize, k: usize| vals[BOX_INDEX[(i << 2) | (j << 1) | k]];
         let mut vv = g(0, 0, 0);
         let mut a = vv + (g(0, 0, 1) - vv) * w;
         vv = g(0, 1, 0);
@@ -577,7 +580,8 @@ impl<T: RealValue> BoxStencil<'_, T> {
         let u = T::from_f64(xyz[0] - c[0] as f64);
         let v = T::from_f64(xyz[1] - c[1] as f64);
         let w = T::from_f64(xyz[2] - c[2] as f64);
-        let g = |i, j, k| self.value(i, j, k);
+        let vals: &[T; 8] = self.values().try_into().unwrap();
+        let g = |i: usize, j: usize, k: usize| vals[BOX_INDEX[(i << 2) | (j << 1) | k]];
         let mut d =
             [g(0, 0, 1) - g(0, 0, 0), g(0, 1, 1) - g(0, 1, 0), g(1, 0, 1) - g(1, 0, 0), g(1, 1, 1) - g(1, 1, 0)];
         let mut a = d[0] + (d[1] - d[0]) * v;
@@ -1162,5 +1166,16 @@ mod tests {
         w.move_to(&Coord::new(12, 0, 0));
         assert!(!w.zero_crossing());
         assert_eq!(w.intersection_mask(0.0) != 0, w.intersects(0.0));
+    }
+
+    #[test]
+    fn box_index_matches_layout() {
+        for i in 0..2 {
+            for j in 0..2 {
+                for k in 0..2 {
+                    assert_eq!(BOX_PT[BOX_INDEX[(i << 2) | (j << 1) | k]], [i as i32, j as i32, k as i32]);
+                }
+            }
+        }
     }
 }

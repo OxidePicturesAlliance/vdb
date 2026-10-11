@@ -58,9 +58,9 @@ fn check_uniform<T: Value>(grid: &Grid<T>) -> Result<(), RayIntersectorError> {
 
 /// Linear search for the zero crossing of the trilinearly interpolated level set along an
 /// index-space ray (`tools::LinearSearchImpl`).
-struct LinearSearch<'a, T: RealValue> {
+struct LinearSearch<'s, 'a, T: RealValue> {
     ray: Ray,
-    stencil: BoxStencil<'a, T>,
+    stencil: &'s mut BoxStencil<'a, T>,
     time: f64,
     v: [T; 2],
     t: [f64; 2],
@@ -70,7 +70,7 @@ struct LinearSearch<'a, T: RealValue> {
     iterations: usize,
 }
 
-impl<'a, T: RealValue> LinearSearch<'a, T> {
+impl<T: RealValue> LinearSearch<'_, '_, T> {
     #[inline]
     fn interp_value(&mut self, time: f64) -> T {
         let pos = self.ray.at(time);
@@ -214,7 +214,7 @@ impl<'a, T: RealValue> LevelSetRayIntersector<'a, T> {
         let dx2 = T::from_f64(2.0 * self.grid.voxel_size()[0]);
         let mut s = LinearSearch {
             ray,
-            stencil: self.stencil.clone(),
+            stencil: &mut self.stencil,
             time: 0.0,
             v: [<T as Value>::zero(); 2],
             t: [0.0; 2],
@@ -224,7 +224,6 @@ impl<'a, T: RealValue> LevelSetRayIntersector<'a, T> {
             iterations: self.iterations,
         };
         let hit = s.hdda(self.grid.tree(), 2);
-        self.stencil = s.stencil;
         hit.then_some((s.ray, s.time))
     }
 
