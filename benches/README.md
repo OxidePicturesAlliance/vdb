@@ -50,47 +50,47 @@ Unless noted, the input is a narrow-band level set of a sphere of radius 1 with 
 
 ## Results
 
-Measured on 2026-10-11 on a 4-vCPU Intel Xeon @ 2.10 GHz cloud VM (shared, so expect
-±10–20% noise), 15 GB RAM, Ubuntu 24.04. C++: OpenVDB 10.0.1 and oneTBB 2021.11 from Ubuntu,
+Measured on 2026-10-11 (after the read-path optimization below) on a 4-vCPU Intel Xeon
+@ 2.10 GHz cloud VM (shared, so expect ±10–20% noise), 15 GB RAM, Ubuntu 24.04. C++: OpenVDB 10.0.1 and oneTBB 2021.11 from Ubuntu,
 g++ 13.3. Rust: rustc 1.97.0. "4T" is 4 threads (rayon / TBB defaults, 5 repetitions), "1T"
 is `--threads 1` (3 repetitions). Ratios above 1 mean Rust is slower.
 
 | benchmark | C++ 4T (ms) | Rust 4T (ms) | Rust/C++ 4T | C++ 1T (ms) | Rust 1T (ms) | Rust/C++ 1T |
 |---|---:|---:|---:|---:|---:|---:|
-| `sphere_create` | 103.01 | 137.74 | 1.34x | 257.24 | 336.40 | 1.31x |
-| `grid_copy` | 8.96 | 24.87 | 2.78x | 21.10 | 41.63 | 1.97x |
-| `active_voxel_count` | 0.45 | 1.38 | 3.07x | 1.17 | 3.17 | 2.71x |
-| `iterate_active` | 38.14 | 18.24 | 0.48x | 34.51 | 22.81 | 0.66x |
-| `random_insert` | 511.50 | 523.32 | 1.02x | 499.57 | 777.31 | 1.56x |
-| `random_read` | 194.12 | 206.38 | 1.06x | 182.62 | 212.64 | 1.16x |
-| `coherent_read` | 72.77 | 131.19 | 1.80x | 62.43 | 123.95 | 1.99x |
-| `box_sample` | 272.76 | 358.54 | 1.31x | 249.47 | 322.18 | 1.29x |
-| `write_none` | 91.38 | 73.53 | 0.80x | 107.42 | 73.45 | 0.68x |
-| `read_none` | 27.73 | 74.69 | 2.69x | 28.04 | 64.55 | 2.30x |
-| `write_zip` | 1393.15 | 863.91 | 0.62x | 2169.74 | 823.75 | 0.38x |
-| `read_zip` | 30.95 | 275.95 | 8.92x | 26.16 | 298.96 | 11.43x |
-| `write_blosc` | 148.49 | 155.70 | 1.05x | 216.08 | 142.90 | 0.66x |
-| `read_blosc` | 27.31 | 127.95 | 4.69x | 30.31 | 98.53 | 3.25x |
-| `csg_union` | 10.27 | 39.71 | 3.86x | 25.17 | 31.33 | 1.24x |
-| `csg_difference` | 8.47 | 32.65 | 3.85x | 25.04 | 24.97 | 1.00x |
-| `dilate_3` | 36.49 | 225.92 | 6.19x | 99.28 | 368.34 | 3.71x |
-| `erode_3` | 11.23 | 95.16 | 8.47x | 30.41 | 185.47 | 6.10x |
-| `signed_flood_fill` | 10.03 | 14.48 | 1.44x | 28.25 | 26.22 | 0.93x |
-| `filter_gaussian` | 465.79 | 878.51 | 1.89x | 1258.45 | 2282.12 | 1.81x |
-| `filter_median` | 593.98 | 634.78 | 1.07x | 1155.27 | 1483.09 | 1.28x |
-| `ls_filter_mean_curvature` | 1851.10 | 3315.34 | 1.79x | 5015.09 | 7573.88 | 1.51x |
-| `gradient` | 87.42 | 118.77 | 1.36x | 242.57 | 240.70 | 0.99x |
-| `laplacian` | 82.47 | 97.36 | 1.18x | 236.74 | 228.80 | 0.97x |
-| `mean_curvature` | 335.06 | 313.68 | 0.94x | 800.79 | 775.52 | 0.97x |
-| `ls_measure` | 52.81 | 71.19 | 1.35x | 154.39 | 188.81 | 1.22x |
-| `volume_to_mesh` | 164.38 | 249.21 | 1.52x | 433.06 | 573.55 | 1.32x |
-| `volume_to_mesh_adaptive` | 482.87 | 612.23 | 1.27x | 1322.67 | 1470.65 | 1.11x |
-| `mesh_to_level_set` | 2411.66 | 3406.34 | 1.41x | 6771.68 | 7295.72 | 1.08x |
-| `ray_intersect` | 379.61 | 619.94 | 1.63x | 375.52 | 621.96 | 1.66x |
-| `particles_to_sdf` | 366.11 | 1184.10 | 3.23x | 693.32 | 1235.04 | 1.78x |
-| `point_index_grid` | 47.89 | 153.46 | 3.20x | 142.66 | 334.87 | 2.35x |
-| `point_data_grid` | 72.88 | 177.72 | 2.44x | 213.08 | 420.97 | 1.98x |
-| **geometric mean** | | | **1.86x** | | | **1.50x** |
+| `sphere_create` | 95.96 | 136.08 | 1.42x | 310.92 | 355.09 | 1.14x |
+| `grid_copy` | 8.37 | 26.18 | 3.13x | 23.53 | 43.40 | 1.84x |
+| `active_voxel_count` | 0.39 | 3.00 | 7.78x | 1.58 | 3.34 | 2.11x |
+| `iterate_active` | 39.01 | 21.74 | 0.56x | 38.70 | 19.08 | 0.49x |
+| `random_insert` | 464.53 | 544.08 | 1.17x | 512.28 | 754.14 | 1.47x |
+| `random_read` | 178.56 | 207.43 | 1.16x | 174.25 | 226.54 | 1.30x |
+| `coherent_read` | 47.00 | 126.67 | 2.70x | 48.59 | 127.14 | 2.62x |
+| `box_sample` | 300.14 | 357.96 | 1.19x | 240.83 | 335.07 | 1.39x |
+| `write_none` | 104.39 | 77.99 | 0.75x | 105.10 | 78.84 | 0.75x |
+| `read_none` | 38.59 | 33.85 | 0.88x | 34.89 | 34.66 | 0.99x |
+| `write_zip` | 1495.88 | 862.10 | 0.58x | 2281.90 | 930.72 | 0.41x |
+| `read_zip` | 220.18 | 213.48 | 0.97x | 217.64 | 206.25 | 0.95x |
+| `write_blosc` | 140.41 | 162.21 | 1.16x | 215.19 | 148.94 | 0.69x |
+| `read_blosc` | 49.05 | 46.39 | 0.95x | 48.58 | 46.60 | 0.96x |
+| `csg_union` | 11.99 | 31.90 | 2.66x | 25.16 | 32.70 | 1.30x |
+| `csg_difference` | 11.52 | 29.70 | 2.58x | 24.98 | 28.27 | 1.13x |
+| `dilate_3` | 38.69 | 191.90 | 4.96x | 95.78 | 421.96 | 4.41x |
+| `erode_3` | 9.54 | 75.92 | 7.96x | 29.06 | 199.61 | 6.87x |
+| `signed_flood_fill` | 8.11 | 10.47 | 1.29x | 26.19 | 26.53 | 1.01x |
+| `filter_gaussian` | 384.85 | 676.43 | 1.76x | 1238.32 | 2276.73 | 1.84x |
+| `filter_median` | 378.38 | 431.69 | 1.14x | 1241.05 | 1462.93 | 1.18x |
+| `ls_filter_mean_curvature` | 1609.84 | 2386.59 | 1.48x | 5404.35 | 7552.76 | 1.40x |
+| `gradient` | 81.21 | 106.64 | 1.31x | 278.26 | 275.48 | 0.99x |
+| `laplacian` | 83.98 | 93.86 | 1.12x | 267.04 | 251.68 | 0.94x |
+| `mean_curvature` | 268.85 | 263.27 | 0.98x | 940.02 | 765.09 | 0.81x |
+| `ls_measure` | 54.07 | 69.46 | 1.28x | 161.21 | 202.26 | 1.25x |
+| `volume_to_mesh` | 176.38 | 232.41 | 1.32x | 441.40 | 559.86 | 1.27x |
+| `volume_to_mesh_adaptive` | 436.82 | 525.79 | 1.20x | 1337.16 | 1410.33 | 1.05x |
+| `mesh_to_level_set` | 1951.61 | 2616.26 | 1.34x | 7006.84 | 7785.22 | 1.11x |
+| `ray_intersect` | 402.36 | 651.90 | 1.62x | 487.46 | 650.93 | 1.34x |
+| `particles_to_sdf` | 320.01 | 1307.70 | 4.09x | 727.79 | 1351.74 | 1.86x |
+| `point_index_grid` | 48.95 | 124.77 | 2.55x | 184.80 | 305.13 | 1.65x |
+| `point_data_grid` | 73.63 | 177.40 | 2.41x | 239.53 | 438.21 | 1.83x |
+| **geometric mean** | | | **1.60x** | | | **1.29x** |
 
 All result summaries agree between the two libraries (same active voxel counts, the same
 value sums to 7 significant digits, the same mesh sizes, ray hits and point leaf counts).
@@ -101,20 +101,29 @@ uses `flate2`'s default backend (miniz_oxide), so the compressed sizes are not e
 
 ### Observations
 
-- **Overall:** Rust is about 1.5× slower than C++ on one thread and about 1.9× slower with
-  4 threads (geometric means), so part of the gap is in how the tools are parallelised.
-- **On par or faster:** the grid operators (`gradient`, `laplacian`, `mean_curvature`),
-  `signed_flood_fill`, `csg_*` and `mesh_to_level_set` (single-threaded), `iterate_active`,
-  and every **write** benchmark (zip writing is 1.6–2.6× faster than C++).
-- **Reading files** is 2.3–11× slower. `read_zip` is the worst case (≈280 ms vs ≈30 ms). It is
-  not the deflate backend: switching `flate2` to `zlib-rs` or decompressing each chunk in
-  one shot changed `read_zip` by less than 10%. The time goes elsewhere in the read path and
-  needs profiling.
-- **Morphology** is the largest algorithmic gap: `dilate_3` is 3.7× and `erode_3` 6.1×
-  slower single-threaded (6–8× with threads).
-- **Scaling with threads:** `csg_*` (3.9× vs 1.0–1.2× on one thread), `particles_to_sdf`
-  (Rust barely speeds up from 1 to 4 threads: 1235 → 1184 ms, against 693 → 366 ms for C++),
-  `grid_copy`, the point grids, and `active_voxel_count` fall behind once threads are
-  enabled.
-- **Tree access:** random accessor reads are within 5–15% of C++, but coherent reads are
-  about 2× slower, and `box_sample` is about 1.3× slower.
+- **Overall:** Rust is about 1.3× slower than C++ on one thread and about 1.6× slower with
+  4 threads (geometric means), so a good part of the gap is in how the tools are
+  parallelised.
+- **On par or faster:** reading and writing files (except `write_blosc` with threads), the
+  grid operators (`gradient`, `laplacian`, `mean_curvature`), `signed_flood_fill`, `csg_*`
+  and `mesh_to_level_set` (single-threaded), and `iterate_active`. Zip writing is 1.7–2.5×
+  faster than C++.
+- **Morphology** is the largest algorithmic gap: `dilate_3` is 4.4× and `erode_3` 6.9×
+  slower single-threaded (5–8× with threads).
+- **Scaling with threads:** `csg_*` (2.6× vs 1.1–1.3× on one thread), `particles_to_sdf`
+  (Rust does not speed up from 1 to 4 threads, while C++ goes from 728 to 320 ms),
+  `grid_copy`, the point grids and `active_voxel_count` fall behind once threads are enabled.
+- **Tree access:** random accessor reads are within 15–30% of C++, but coherent reads are
+  about 2.6× slower, and `box_sample` is about 1.2–1.4× slower.
+
+### History
+
+- **Read path (I/O):** leaf buffers are now decoded straight from the (decompressed) bytes
+  into the leaf, using per-thread reusable buffers and zlib state, instead of going through
+  three temporary vectors per node; Blosc unshuffling is specialized for 4- and 8-byte
+  types. Single-threaded reads went from 65 / 299 / 99 ms (none / zip / Blosc) to
+  35 / 206 / 47 ms.
+- **Benchmark fix:** the first version of `compare.cpp` read streams with OpenVDB's default
+  delayed loading, so its `read_*` timings skipped decoding the leaf buffers and were too
+  low (the earlier "2.3–11× slower" read results were wrong). It now passes
+  `delayLoad = false`, and the `read_*` checks include the sum of the decoded values.

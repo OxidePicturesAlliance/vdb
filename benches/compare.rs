@@ -237,7 +237,10 @@ fn main() {
             &format!("read_{label}"),
             || (),
             |_| vdb::io::read_stream(&bytes[..]).unwrap().1,
-            |_, g| g[0].active_voxel_count().to_string(),
+            |_, g| {
+                let g = g[0].as_float().unwrap();
+                format!("{} {:.6e}", g.active_voxel_count(), sum_active(g))
+            },
         );
     }
 

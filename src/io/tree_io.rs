@@ -8,8 +8,8 @@
 
 use super::bytes::{Reader, WriteLe};
 use super::compression::{
-    read_compressed_values, read_mask, write_compressed_values, write_mask, Compression, ValueCodec,
-    FILE_VERSION_NODE_MASK_COMPRESSION,
+    read_compressed_values, read_compressed_values_into, read_mask, write_compressed_values, write_mask, Compression,
+    ValueCodec, FILE_VERSION_NODE_MASK_COMPRESSION,
 };
 use super::error::{Error, Result};
 use super::value_io::IoValue;
@@ -82,8 +82,8 @@ impl<T: IoValue> NodeIo<T> for LeafNode<T> {
                     self.set_origin(origin);
                     num_buffers = r.read_i8()?;
                 }
-                let values = read_compressed_values(r, 512, self.value_mask(), &ctx.codec)?;
-                self.buffer_mut().copy_from_slice(&values);
+                let (buffer, mask) = self.buffer_and_mask_mut();
+                read_compressed_values_into(r, buffer, mask, &ctx.codec)?;
                 // Auxiliary buffers written by old library versions are read and discarded.
                 // They are never mask compressed.
                 let zipped = ctx.codec.compression.contains(Compression::ZIP);
