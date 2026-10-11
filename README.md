@@ -40,9 +40,10 @@ let (_meta, grids) = vdb::io::read_file("sphere.vdb")?;
 | Particles & points | `tools::particles_to_level_set`, `point_index_grid`, `point_partitioner`, `point_scatter`, `points_to_mask`, `volume_to_spheres` | Scattered points are bit-identical to C++ |
 | Rays | `tools::ray_intersector`, `tools::ray_tracer` | Level-set and volume intersection, a small renderer |
 | Solvers | `math::conj_gradient`, `tools::poisson_solver` | Preconditioned conjugate gradient |
+| NanoVDB | `nanovdb` | Pointer-free GPU-friendly layout, OpenVDB↔NanoVDB conversion (incl. Fp4/8/16/N, index grids), `.nvdb` I/O, samplers, HDDA; converted grids are byte-identical to C++ |
 | Diagnostics | `tools::diagnostics`, `count`, `statistics`, `find_active_values` | |
 
-**In progress:** point data grids (`points`) and NanoVDB.
+**In progress:** point data grids (`points`).
 
 **Not planned:** OpenVDB AX (needs an LLVM JIT), the Houdini/Maya plugins, Python bindings.
 
@@ -56,6 +57,7 @@ cargo run --release --example vdb_print -- -l tests/data/sphere.vdb   # like Ope
 cargo run --release --example level_set_sphere
 cargo run --release --example mesh_roundtrip -- torus.obj 0.01 0.0
 cargo run --release --example ray_trace_sphere                         # writes a PPM image
+cargo run --release --example nanovdb_sphere
 ```
 
 ## Testing
