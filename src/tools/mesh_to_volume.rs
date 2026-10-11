@@ -24,7 +24,7 @@ use super::tree_ops::steal_leaves;
 use crate::grid::{Grid, GridClass};
 use crate::math::proximity::closest_point_on_triangle_to_point;
 use crate::math::{Coord, CoordBBox, Transform, Vec3, Vec3d, Vec3f};
-use crate::tree::{Internal2, LeafNode, Node, Tree, ValueAccessor};
+use crate::tree::{Internal2, LeafNode, Node, Tree, ValueAccessor, ValueAccessorMut};
 use crate::types::{RealValue, Value};
 use crate::util::NodeMask;
 use crate::util::COORD_OFFSETS;
@@ -212,37 +212,49 @@ fn eval_subdivision_count(p: &Triangle) -> i32 {
     (ext(0).max(ext(1).max(ext(2))) / (8.0 * 2.0)) as i32
 }
 
-fn update_distance<T: RealValue>(ijk: &Coord, prim: &Triangle, data: &mut VoxelizationData<T>) -> bool {
+/// Cached accessors to the trees of a [`VoxelizationData`].
+struct VoxelAccessors<'a, T: RealValue> {
+    dist: ValueAccessorMut<'a, Internal2<T>>,
+    index: ValueAccessorMut<'a, Internal2<i32>>,
+    prim_id: ValueAccessorMut<'a, Internal2<u8>>,
+}
+
+fn update_distance<T: RealValue>(ijk: &Coord, prim: &Triangle, acc: &mut VoxelAccessors<'_, T>) -> bool {
     let center = ijk.as_vec3d();
     let (cp, _) = closest_point_on_triangle_to_point(&prim.a, &prim.c, &prim.b, &center);
     let dist: T = t((center - cp).length_sqr());
     if dist.is_nan() {
         return false;
     }
-    let old = data.dist.get_value(ijk);
+    let old = acc.dist.get_value(ijk);
     if dist < old {
-        data.dist.set_value(ijk, dist);
-        data.index.set_value(ijk, prim.index);
+        acc.dist.set_value(ijk, dist);
+        acc.index.set_value(ijk, prim.index);
     } else if dist == old {
-        let cur = data.index.get_value(ijk);
-        data.index.set_value_only(ijk, prim.index.min(cur));
+        let cur = acc.index.get_value(ijk);
+        acc.index.set_value_only(ijk, prim.index.min(cur));
     }
     !(dist > t(0.75))
 }
 
 fn voxelize_triangle<T: RealValue>(prim: &Triangle, data: &mut VoxelizationData<T>) {
+    let prim_id = data.new_prim_id();
+    let mut acc = VoxelAccessors {
+        dist: data.dist.accessor_mut(),
+        index: data.index.accessor_mut(),
+        prim_id: data.prim_id.accessor_mut(),
+    };
     let mut coords: Vec<Coord> = Vec::new();
     let ijk = Coord::floor(prim.a);
     coords.push(ijk);
-    update_distance(&ijk, prim, data);
-    let prim_id = data.new_prim_id();
-    data.prim_id.set_value_only(&ijk, prim_id);
+    update_distance(&ijk, prim, &mut acc);
+    acc.prim_id.set_value_only(&ijk, prim_id);
     while let Some(ijk) = coords.pop() {
         for off in COORD_OFFSETS.iter() {
             let n = ijk + *off;
-            if prim_id != data.prim_id.get_value(&n) {
-                data.prim_id.set_value_only(&n, prim_id);
-                if update_distance(&n, prim, data) {
+            if prim_id != acc.prim_id.get_value(&n) {
+                acc.prim_id.set_value_only(&n, prim_id);
+                if update_distance(&n, prim, &mut acc) {
                     coords.push(n);
                 }
             }
@@ -1068,16 +1080,27 @@ where
 
     // Voxelize the mesh.
     {
+        // Contiguous ranges of polygons (meshes are usually spatially coherent in polygon
+        // order, so the batches overlap little), combined pairwise in parallel. Combining
+        // keeps the smallest distance and polygon index, so the split doesn't matter.
         let n = mesh.polygon_count();
-        let batches: Vec<VoxelizationData<T>> = (0..n)
+        let batches = (rayon::current_num_threads() * 4).clamp(1, n.max(1));
+        let size = n.div_ceil(batches).max(1);
+        let combined = (0..n.div_ceil(size))
             .into_par_iter()
-            .fold(VoxelizationData::<T>::new, |mut d, i| {
-                voxelize_polygon(mesh, i, &mut d);
-                d
+            .map(|b| {
+                let mut d = VoxelizationData::<T>::new();
+                for i in b * size..((b + 1) * size).min(n) {
+                    voxelize_polygon(mesh, i, &mut d);
+                }
+                (d.dist, d.index)
             })
-            .collect();
-        for b in batches {
-            combine_data(&mut dist_tree, &mut index_tree, b.dist, b.index);
+            .reduce_with(|(mut dist, mut index), (rdist, rindex)| {
+                combine_data(&mut dist, &mut index, rdist, rindex);
+                (dist, index)
+            });
+        if let Some((rdist, rindex)) = combined {
+            combine_data(&mut dist_tree, &mut index_tree, rdist, rindex);
         }
     }
 
