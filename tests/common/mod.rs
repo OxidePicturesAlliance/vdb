@@ -159,6 +159,11 @@ pub fn dump_grid(out: &mut String, grid: &AnyGrid) {
         AnyGrid::Vec3S(g) => dump_tree::<Vec3f>(out, g.tree(), false),
         AnyGrid::Vec3D(g) => dump_tree::<Vec3d>(out, g.tree(), false),
         AnyGrid::Vec3I(g) => dump_tree::<Vec3i>(out, g.tree(), false),
+        // Like `vdb_ref dump`, point data grids are described by tests/points.rs instead.
+        AnyGrid::PointData(_) | AnyGrid::PointIndex(_) => {
+            out.push_str("  unsupported\n");
+            return;
+        }
     }
     let m = grid.transform().map().affine_matrix();
     out.push_str("  transform");

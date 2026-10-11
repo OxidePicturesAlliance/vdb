@@ -228,6 +228,8 @@ pub(crate) enum GridKind {
     Vec3S,
     Vec3D,
     Vec3I,
+    PointData,
+    PointIndex,
 }
 
 impl GridKind {
@@ -242,6 +244,8 @@ impl GridKind {
             "Tree_vec3s_5_4_3" => GridKind::Vec3S,
             "Tree_vec3d_5_4_3" => GridKind::Vec3D,
             "Tree_vec3i_5_4_3" => GridKind::Vec3I,
+            "Tree_ptdataidx32_5_4_3" => GridKind::PointData,
+            "Tree_ptidx32_5_4_3" => GridKind::PointIndex,
             _ => return None,
         })
     }
@@ -320,6 +324,21 @@ pub(crate) fn read_grid_tree<R: Read>(
         GridKind::Vec3S => load!(crate::math::Vec3f, Vec3S, LeafFormat::Standard),
         GridKind::Vec3D => load!(crate::math::Vec3d, Vec3D, LeafFormat::Standard),
         GridKind::Vec3I => load!(Vec3i, Vec3I, LeafFormat::Standard),
+        GridKind::PointData => {
+            let tree = if read_tree_data {
+                super::points_io::read_point_data_tree(r, v, c)?
+            } else {
+                crate::points::PointDataTree::new()
+            };
+            let mut g = crate::points::PointDataGrid::from_tree(tree, transform);
+            *g.metadata_mut() = meta;
+            AnyGrid::PointData(g)
+        }
+        GridKind::PointIndex => {
+            let tree =
+                if read_tree_data { super::points_io::read_point_index_tree(r, v, c)? } else { Default::default() };
+            AnyGrid::PointIndex(crate::tools::point_index_grid::PointIndexGrid::from_parts(tree, transform, meta))
+        }
     })
 }
 
@@ -334,7 +353,21 @@ pub(crate) fn copy_tree_from(grid: &mut AnyGrid, parent: &AnyGrid) -> Result<()>
             }
         };
     }
-    copy!(Float, Double, Int32, Int64, Bool, Mask, Vec3S, Vec3D, Vec3I);
+    match (&mut *grid, parent) {
+        (AnyGrid::PointIndex(g), AnyGrid::PointIndex(p)) => {
+            *g = crate::tools::point_index_grid::PointIndexGrid::from_parts(
+                p.tree().clone(),
+                g.transform().clone(),
+                g.metadata().clone(),
+            );
+            return Ok(());
+        }
+        (AnyGrid::PointIndex(_), _) | (_, AnyGrid::PointIndex(_)) => {
+            return Err(Error::corrupt("instanced grid and its parent have different types"))
+        }
+        _ => {}
+    }
+    copy!(Float, Double, Int32, Int64, Bool, Mask, Vec3S, Vec3D, Vec3I, PointData);
     Ok(())
 }
 
@@ -449,6 +482,12 @@ fn write_grid(
         AnyGrid::Vec3S(g) => tree!(g, LeafFormat::Standard),
         AnyGrid::Vec3D(g) => tree!(g, LeafFormat::Standard),
         AnyGrid::Vec3I(g) => tree!(g, LeafFormat::Standard),
+        AnyGrid::PointData(g) => {
+            super::points_io::write_point_data_tree(out, g.tree(), compression, &mut desc.block_pos);
+        }
+        AnyGrid::PointIndex(g) => {
+            super::points_io::write_point_index_tree(out, g.tree(), compression, &mut desc.block_pos);
+        }
     }
     desc.end_pos = out.len() as i64;
     if seekable {
@@ -492,14 +531,14 @@ mod tests {
         let d = GridDescriptor {
             grid_name: "p".into(),
             unique_name: "p".into(),
-            grid_type: "Tree_ptdataidx32_5_4_3".into(),
+            grid_type: "Tree_foo_5_4_3".into(),
             save_float_as_half: false,
             instance_parent: String::new(),
             grid_pos: 0,
             block_pos: 0,
             end_pos: 0,
         };
-        assert_eq!(d.value_type(), Some("ptdataidx32"));
+        assert_eq!(d.value_type(), Some("foo"));
         assert!(!d.is_supported());
     }
 }

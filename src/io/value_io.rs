@@ -67,7 +67,7 @@ macro_rules! impl_int {
         }
     )*};
 }
-impl_int!(i32, i64);
+impl_int!(i32, i64, u32);
 
 impl IoValue for f32 {
     const SIZE: usize = 4;

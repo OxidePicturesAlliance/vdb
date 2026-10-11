@@ -1,0 +1,33 @@
+grid empty
+  transform 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+  leaf_count 0
+  active_voxels 0
+  points 0
+grid inactive
+  transform 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3fd0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+  leaf_count 11
+  active_voxels 39
+  points 40
+  attribute 0 P vec3s fxpt8
+  leaf 0 0 -8 points 1 mask b9b23f3a46fd0825 offsets 864f7fff33faa735
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage a32734196f09ea94
+  leaf 0 8 -8 points 7 mask 5b6e484dde3cf43d offsets ab9dc106634cf1b5
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 8f61367d419c150f
+  leaf 8 0 -8 points 11 mask fbc8ae198fd2b595 offsets 75198467eb7ab9e6
+    array 0 size 11 stride 1 data_size 11 flags 8 uniform 0 storage 05b8c99e6e1c0b8e
+  leaf 8 8 -8 points 1 mask 60aad30d522d4865 offsets 049dc3880ef36fd5
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage b43a9b1a9ae860c7
+  leaf 16 0 -8 points 1 mask f6183599acdbfba5 offsets 1448ab015f8ce954
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage cd224a17d44435f6
+  leaf 16 8 -8 points 2 mask ec3faa0aee0ef9b9 offsets 864cec2e0feadc25
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage 029680dfa4cc44de
+  leaf 0 0 0 points 1 mask b9b23d3a46fd04bf offsets ef37b2d8b42fa4e4
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage 4adbe7193c8daa47
+  leaf 0 8 0 points 7 mask 3f303b1c3458a7ed offsets c00cd248e2e4e7d2
+    array 0 size 7 stride 1 data_size 7 flags 8 uniform 0 storage 3b35aecab02f72f2
+  leaf 8 0 0 points 6 mask c72b21290cb58f95 offsets 4a4cbfd711c9b643
+    array 0 size 6 stride 1 data_size 6 flags 8 uniform 0 storage f4bc2f0687356f96
+  leaf 16 0 0 points 2 mask 776f11821cb1dffd offsets 0a8e8d6c8b52d5d7
+    array 0 size 2 stride 1 data_size 2 flags 8 uniform 0 storage e173a1b370a405a5
+  leaf 16 8 0 points 1 mask d8ccd0c9e6c13245 offsets 35ef108ded770144
+    array 0 size 1 stride 1 data_size 1 flags 8 uniform 0 storage edbde619086cee2b

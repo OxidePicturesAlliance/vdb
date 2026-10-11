@@ -306,6 +306,10 @@ pub enum AnyGrid {
     /// A topology-only grid (OpenVDB's `MaskGrid`, tree type `"Tree_mask_5_4_3"`),
     /// represented as a [`BoolGrid`] whose voxel values equal their active states.
     Mask(BoolGrid),
+    /// A point data grid (OpenVDB's `PointDataGrid`, tree type `"Tree_ptdataidx32_5_4_3"`).
+    PointData(crate::points::PointDataGrid),
+    /// A point index grid (OpenVDB's `PointIndexGrid`, tree type `"Tree_ptidx32_5_4_3"`).
+    PointIndex(crate::tools::point_index_grid::PointIndexGrid),
 }
 
 /// Run an expression on the typed grid inside an [`AnyGrid`].
@@ -322,6 +326,8 @@ macro_rules! with_any_grid {
             $crate::grid::AnyGrid::Vec3D($g) => $body,
             $crate::grid::AnyGrid::Vec3I($g) => $body,
             $crate::grid::AnyGrid::Mask($g) => $body,
+            $crate::grid::AnyGrid::PointData($g) => $body,
+            $crate::grid::AnyGrid::PointIndex($g) => $body,
         }
     };
 }
@@ -363,6 +369,32 @@ impl AnyGrid {
             AnyGrid::Vec3D(_) => Vec3DGrid::grid_type(),
             AnyGrid::Vec3I(_) => Vec3IGrid::grid_type(),
             AnyGrid::Mask(_) => "Tree_mask_5_4_3".to_string(),
+            AnyGrid::PointData(_) => crate::points::PointDataGrid::grid_type(),
+            AnyGrid::PointIndex(_) => crate::tools::point_index_grid::PointIndexGrid::grid_type(),
+        }
+    }
+    /// The point data grid, if this is an [`AnyGrid::PointData`].
+    pub fn as_point_data(&self) -> Option<&crate::points::PointDataGrid> {
+        if let AnyGrid::PointData(g) = self {
+            Some(g)
+        } else {
+            None
+        }
+    }
+    /// The point data grid, mutably, if this is an [`AnyGrid::PointData`].
+    pub fn as_point_data_mut(&mut self) -> Option<&mut crate::points::PointDataGrid> {
+        if let AnyGrid::PointData(g) = self {
+            Some(g)
+        } else {
+            None
+        }
+    }
+    /// Convert into the point data grid, if this is an [`AnyGrid::PointData`].
+    pub fn into_point_data(self) -> Option<crate::points::PointDataGrid> {
+        if let AnyGrid::PointData(g) = self {
+            Some(g)
+        } else {
+            None
         }
     }
     /// The mask grid, if this is an [`AnyGrid::Mask`].
@@ -419,6 +451,37 @@ any_grid_conv!(
     Vec3D, Vec3d, as_vec3d, as_vec3d_mut, into_vec3d;
     Vec3I, Vec3i, as_vec3i, as_vec3i_mut, into_vec3i;
 );
+
+impl From<crate::points::PointDataGrid> for AnyGrid {
+    fn from(g: crate::points::PointDataGrid) -> Self {
+        AnyGrid::PointData(g)
+    }
+}
+
+impl From<crate::tools::point_index_grid::PointIndexGrid> for AnyGrid {
+    fn from(g: crate::tools::point_index_grid::PointIndexGrid) -> Self {
+        AnyGrid::PointIndex(g)
+    }
+}
+
+impl AnyGrid {
+    /// The point index grid, if this is an [`AnyGrid::PointIndex`].
+    pub fn as_point_index(&self) -> Option<&crate::tools::point_index_grid::PointIndexGrid> {
+        if let AnyGrid::PointIndex(g) = self {
+            Some(g)
+        } else {
+            None
+        }
+    }
+    /// Convert into the point index grid, if this is an [`AnyGrid::PointIndex`].
+    pub fn into_point_index(self) -> Option<crate::tools::point_index_grid::PointIndexGrid> {
+        if let AnyGrid::PointIndex(g) = self {
+            Some(g)
+        } else {
+            None
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

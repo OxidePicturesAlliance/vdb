@@ -81,4 +81,26 @@ tool is looked up in `$NANOVDB_REF` or at `tests/data/cpp/nanovdb_ref`:
 
 ```sh
 NANOVDB_REF=$PWD/tests/data/cpp/nanovdb_ref cargo test --test nanovdb -- --ignored
+## Point data reference files (`points_ref.cpp`)
+
+`points_ref.cpp` generates the point data and point index grid files in `tests/data/points/`
+and dumps them in the text format compared by `tests/points.rs`:
+
+```sh
+cd tests/data/cpp
+g++ -std=c++17 -O1 points_ref.cpp -o points_ref -lopenvdb -ltbb -lImath-3_1
+./points_ref gen ../points                     # writes ../points/*.vdb
+for f in attrs none zip codecs misc scatter; do
+  ./points_ref dump ../points/points_$f.vdb > ../points/points_$f.dump.txt
+done
+./points_ref dumpindex ../points/points_index.vdb > ../points/points_index.dump.txt
+```
+
+(`points_ref` is ignored by git.) The ignored test `cpp_reads_rust_points` writes point
+data and point index grids from Rust (every compression mode, including multi-page paged
+attribute streams) and checks that `points_ref dump` / `dumpindex` read them identically.
+It looks for the tool in `$POINTS_REF`, or at `tests/data/cpp/points_ref`:
+
+```sh
+POINTS_REF=$PWD/tests/data/cpp/points_ref cargo test --test points -- --ignored
 ```
