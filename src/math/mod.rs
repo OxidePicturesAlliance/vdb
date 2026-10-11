@@ -2,13 +2,17 @@
 //! transforms, rays and statistics.
 
 pub mod bbox;
+pub mod conj_gradient;
 pub mod coord;
+pub mod finite_difference;
 pub mod maps;
 pub mod mat;
 pub mod math_util;
+pub mod operators;
 pub mod quat;
 pub mod ray;
 pub mod stats;
+pub mod stencils;
 pub mod transform;
 pub mod vec2;
 pub mod vec3;
@@ -22,6 +26,7 @@ pub use maps::{
 };
 pub use mat::{diagonalize_symmetric_matrix, polar_decomposition, Axis, Mat3, Mat3d, Mat3s, Mat4, Mat4d, Mat4s};
 pub use math_util::FloatTolerance;
+pub use operators::MapJacobian;
 pub use quat::{slerp, slerp_mat3, Quat, Quatd, Quats};
 pub use ray::{Dda, Ray, Rayd, Rayf, TimeSpan};
 pub use stats::{Extrema, Histogram, HistogramError, MinMax, Stats};
