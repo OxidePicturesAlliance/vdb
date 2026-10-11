@@ -20,9 +20,18 @@
 //!
 //! Delayed loading and memory mapping are not implemented: trees are read in full.
 //!
+//! # Features
+//!
+//! The module exists when the `read` or `write` feature is enabled. Readers ([`File`],
+//! [`Stream`], [`read_file`], ...) require `read`; writers ([`write_file`], [`write_to`],
+//! [`write_stream`], [`WriteOptions`], ...) and every encoder they use require `write`. A
+//! build with only `read` contains no code that writes VDB data or creates files. This
+//! module contains no `unsafe` code.
+//!
 //! # Example
 //!
 //! ```
+//! # #[cfg(all(feature = "read", feature = "write"))] {
 //! use vdb::prelude::*;
 //! use vdb::io;
 //!
@@ -36,8 +45,11 @@
 //! let density = grids[0].as_float().unwrap();
 //! assert_eq!(density.get_value(&Coord::new(1, 2, 3)), 0.5);
 //! # std::fs::remove_file(&path).ok();
-//! # Ok::<(), io::Error>(())
+//! # }
+//! # Ok::<(), vdb::io::Error>(())
 //! ```
+
+#![forbid(unsafe_code)]
 
 mod archive;
 pub mod blosc;
@@ -57,7 +69,10 @@ pub use archive::{
 };
 pub use compression::Compression;
 pub use error::{Error, Result};
-pub use file::{write_to, File, GridMetadata, Stream};
+#[cfg(feature = "write")]
+pub use file::write_to;
+#[cfg(feature = "read")]
+pub use file::{File, GridMetadata, Stream};
 pub use value_io::IoValue;
 
 use crate::grid::AnyGrid;
@@ -72,6 +87,7 @@ pub const LIBRARY_MAJOR_VERSION: u32 = 10;
 pub const LIBRARY_MINOR_VERSION: u32 = 0;
 
 /// Options for writing files and streams.
+#[cfg(feature = "write")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WriteOptions {
     /// Compression flags. Zip is never applied to level sets and fog volumes (as in
@@ -82,6 +98,7 @@ pub struct WriteOptions {
     pub write_grid_stats: bool,
 }
 
+#[cfg(feature = "write")]
 impl Default for WriteOptions {
     /// Zip and active-mask compression, with grid statistics.
     fn default() -> Self {
@@ -89,6 +106,7 @@ impl Default for WriteOptions {
     }
 }
 
+#[cfg(feature = "write")]
 impl WriteOptions {
     /// Default options with the given compression flags.
     pub fn with_compression(compression: Compression) -> Self {
@@ -97,6 +115,7 @@ impl WriteOptions {
 }
 
 /// Read the file-level metadata and all grids of supported types from a file.
+#[cfg(feature = "read")]
 pub fn read_file(path: impl AsRef<Path>) -> Result<(MetaMap, Vec<AnyGrid>)> {
     let file = File::open(path)?;
     let grids = file.read_grids()?;
@@ -104,22 +123,26 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<(MetaMap, Vec<AnyGrid>)> {
 }
 
 /// Read one grid by name (or unique name) from a file.
+#[cfg(feature = "read")]
 pub fn read_grid(path: impl AsRef<Path>, name: &str) -> Result<AnyGrid> {
     File::open(path)?.read_grid(name)
 }
 
 /// Read the descriptors, metadata and transforms of all grids in a file, without trees.
+#[cfg(feature = "read")]
 pub fn read_grid_metadata(path: impl AsRef<Path>) -> Result<Vec<GridMetadata>> {
     File::open(path)?.read_all_grid_metadata()
 }
 
 /// Write grids and file-level metadata to a file with default options
 /// (zip + active-mask compression, grid statistics).
+#[cfg(feature = "write")]
 pub fn write_file(path: impl AsRef<Path>, grids: &[AnyGrid], metadata: &MetaMap) -> Result<()> {
     write_file_with_options(path, grids, metadata, &WriteOptions::default())
 }
 
 /// Write grids and file-level metadata to a file.
+#[cfg(feature = "write")]
 pub fn write_file_with_options(
     path: impl AsRef<Path>,
     grids: &[AnyGrid],
@@ -132,6 +155,7 @@ pub fn write_file_with_options(
 
 /// Read a complete archive sequentially from a reader (see [`Stream`]); returns the
 /// file-level metadata and the grids of supported types.
+#[cfg(feature = "read")]
 pub fn read_stream<R: std::io::Read>(reader: R) -> Result<(MetaMap, Vec<AnyGrid>)> {
     let s = Stream::read(reader)?;
     let meta = s.metadata.clone();
@@ -139,11 +163,12 @@ pub fn read_stream<R: std::io::Read>(reader: R) -> Result<(MetaMap, Vec<AnyGrid>
 }
 
 /// Write grids and file-level metadata to a writer as a stream (without grid offsets).
+#[cfg(feature = "write")]
 pub fn write_stream<W: std::io::Write>(
     writer: W,
     grids: &[AnyGrid],
     metadata: &MetaMap,
     options: &WriteOptions,
 ) -> Result<()> {
-    Stream::write(writer, grids, metadata, options)
+    file::write_stream_to(writer, grids, metadata, options)
 }

@@ -4,13 +4,30 @@
 //! 176-byte `FileMetaData` plus NUL-terminated name per grid, and the (optionally ZIP or
 //! BLOSC compressed) grid buffers. Since v32.6 a file may instead be a raw dump of a grid
 //! buffer holding one or more grids; both forms are read.
+//!
+//! The module exists when the `read` or `write` feature is enabled; the readers require
+//! `read` and the writers `write`. It contains no `unsafe` code.
 
+#![forbid(unsafe_code)]
+
+#[cfg(feature = "read")]
 use super::checksum::update_grid_count;
-use super::data::{rd_bbox, rd_u16, rd_u32, rd_u64, rd_vec3d, wr_bbox, wr_u16, wr_u32, wr_u64, wr_vec3d, Version};
-use super::handle::{AlignedBuffer, GridHandle};
-use super::{to_magic, GridClass, GridType, MagicType, NanoError, Result, MAGIC_FILE, MAGIC_NUMB};
+use super::data::Version;
+#[cfg(feature = "read")]
+use super::data::{rd_bbox, rd_u16, rd_u32, rd_u64, rd_vec3d};
+#[cfg(feature = "write")]
+use super::data::{wr_bbox, wr_u16, wr_u32, wr_u64, wr_vec3d};
+#[cfg(feature = "read")]
+use super::handle::AlignedBuffer;
+use super::handle::GridHandle;
+#[cfg(feature = "read")]
+use super::{to_magic, MagicType, MAGIC_NUMB};
+use super::{GridClass, GridType, NanoError, Result, MAGIC_FILE};
 use crate::math::{CoordBBox, Vec3d};
-use std::io::{Read, Write};
+#[cfg(feature = "read")]
+use std::io::Read;
+#[cfg(feature = "write")]
+use std::io::Write;
 use std::path::Path;
 
 /// Compression codec of the grids in a segment (`nanovdb::io::Codec`).
@@ -26,6 +43,7 @@ pub enum Codec {
 }
 
 impl Codec {
+    #[cfg(feature = "read")]
     fn from_u16(v: u16) -> Result<Self> {
         match v {
             0 => Ok(Codec::None),
@@ -49,6 +67,7 @@ pub const FILE_HEADER_SIZE: usize = 16;
 /// Size of a `FileMetaData` (without the grid name).
 pub const FILE_META_DATA_SIZE: usize = 176;
 /// Maximum size of an uncompressed BLOSC chunk.
+#[cfg(any(feature = "read", feature = "write"))]
 const BLOSC_MAX_CHUNK: usize = 1 << 30;
 
 /// Per-grid meta data stored in a segment (`FileMetaData` + grid name).
@@ -113,6 +132,7 @@ impl FileGridMetaData {
         }
     }
 
+    #[cfg(feature = "write")]
     fn to_bytes(&self) -> Vec<u8> {
         let mut b = vec![0u8; FILE_META_DATA_SIZE];
         wr_u64(&mut b, 0, self.grid_size);
@@ -140,6 +160,7 @@ impl FileGridMetaData {
         b
     }
 
+    #[cfg(feature = "read")]
     fn parse(b: &[u8], pos: &mut usize) -> Result<Self> {
         let o = *pos;
         if b.len() < o + FILE_META_DATA_SIZE {
@@ -185,6 +206,7 @@ pub fn string_hash(s: &str) -> u64 {
     hash
 }
 
+#[cfg(feature = "write")]
 fn compress(data: &[u8], codec: Codec) -> Result<Vec<u8>> {
     match codec {
         Codec::None => Ok(data.to_vec()),
@@ -210,6 +232,7 @@ fn compress(data: &[u8], codec: Codec) -> Result<Vec<u8>> {
 }
 
 /// Decompress grid data of `size` bytes starting at `src[*pos..]`, advancing `pos`.
+#[cfg(feature = "read")]
 fn decompress_into(src: &[u8], pos: &mut usize, dst: &mut [u8], codec: Codec) -> Result<()> {
     let need = |n: usize, pos: usize| {
         if src.len() < pos + n {
@@ -259,6 +282,7 @@ fn decompress_into(src: &[u8], pos: &mut usize, dst: &mut [u8], codec: Codec) ->
 }
 
 /// Serialize the grids of `handle` as one segment.
+#[cfg(feature = "write")]
 fn segment_bytes(handle: &GridHandle, codec: Codec) -> Result<Vec<u8>> {
     if handle.grid_count() == 0 {
         return Err(NanoError::Unsupported("segment contains no grids".into()));
@@ -287,18 +311,21 @@ fn segment_bytes(handle: &GridHandle, codec: Codec) -> Result<Vec<u8>> {
 }
 
 /// Write the grids of `handle` as one segment to a stream (`nanovdb::io::writeGrid`).
+#[cfg(feature = "write")]
 pub fn write_grid_to<W: Write>(w: &mut W, handle: &GridHandle, codec: Codec) -> Result<()> {
     w.write_all(&segment_bytes(handle, codec)?)?;
     Ok(())
 }
 
 /// Write the grids of `handle` to a file as one segment (`nanovdb::io::writeGrid`).
+#[cfg(feature = "write")]
 pub fn write_grid<P: AsRef<Path>>(path: P, handle: &GridHandle, codec: Codec) -> Result<()> {
     std::fs::write(path, segment_bytes(handle, codec)?)?;
     Ok(())
 }
 
 /// Write several handles to a file, one segment per handle (`nanovdb::io::writeGrids`).
+#[cfg(feature = "write")]
 pub fn write_grids<P: AsRef<Path>>(path: P, handles: &[GridHandle], codec: Codec) -> Result<()> {
     let mut out = Vec::new();
     for h in handles {
@@ -309,6 +336,7 @@ pub fn write_grids<P: AsRef<Path>>(path: P, handles: &[GridHandle], codec: Codec
 }
 
 /// A parsed segment: its codec, grid meta data and the offset of the first grid's data.
+#[cfg(feature = "read")]
 struct Segment {
     codec: Codec,
     meta: Vec<FileGridMetaData>,
@@ -316,11 +344,13 @@ struct Segment {
 }
 
 /// The contents of a NanoVDB file: segments or a raw grid buffer.
+#[cfg(feature = "read")]
 enum Contents {
     Raw,
     Segments(Vec<Segment>),
 }
 
+#[cfg(feature = "read")]
 fn parse(bytes: &[u8]) -> Result<Contents> {
     if bytes.len() < 8 {
         return Err(NanoError::InvalidFile("file too short".into()));
@@ -375,12 +405,14 @@ fn parse(bytes: &[u8]) -> Result<Contents> {
     Ok(Contents::Segments(segments))
 }
 
+#[cfg(feature = "read")]
 fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>> {
     Ok(std::fs::read(path)?)
 }
 
 /// Read all grids from the bytes of a file: one handle per segment, or a single handle for
 /// a raw grid buffer (`nanovdb::io::readGrids`).
+#[cfg(feature = "read")]
 pub fn read_grids_from_bytes(bytes: &[u8]) -> Result<Vec<GridHandle>> {
     match parse(bytes)? {
         Contents::Raw => Ok(vec![GridHandle::from_bytes(bytes)?]),
@@ -405,11 +437,13 @@ pub fn read_grids_from_bytes(bytes: &[u8]) -> Result<Vec<GridHandle>> {
 }
 
 /// Read all grids of a file, one handle per segment (`nanovdb::io::readGrids`).
+#[cfg(feature = "read")]
 pub fn read_grids<P: AsRef<Path>>(path: P) -> Result<Vec<GridHandle>> {
     read_grids_from_bytes(&read_file(path)?)
 }
 
 /// Read every grid of a file into a single handle (`nanovdb::io::readGrid(file, -1)`).
+#[cfg(feature = "read")]
 pub fn read_all_grids<P: AsRef<Path>>(path: P) -> Result<GridHandle> {
     let handles = read_grids(path)?;
     if handles.len() == 1 {
@@ -418,6 +452,7 @@ pub fn read_all_grids<P: AsRef<Path>>(path: P) -> Result<GridHandle> {
     GridHandle::merge(&handles)
 }
 
+#[cfg(feature = "read")]
 fn single(bytes: &[u8], src: &mut usize, m: &FileGridMetaData, codec: Codec) -> Result<GridHandle> {
     let mut buf = AlignedBuffer::zeroed(m.grid_size as usize);
     decompress_into(bytes, src, buf.as_mut_slice(), codec)?;
@@ -425,6 +460,7 @@ fn single(bytes: &[u8], src: &mut usize, m: &FileGridMetaData, codec: Codec) -> 
     GridHandle::new(buf)
 }
 
+#[cfg(feature = "read")]
 fn select<F: Fn(usize, &FileGridMetaData) -> bool>(bytes: &[u8], pred: F) -> Result<Option<GridHandle>> {
     match parse(bytes)? {
         Contents::Raw => {
@@ -455,12 +491,14 @@ fn select<F: Fn(usize, &FileGridMetaData) -> bool>(bytes: &[u8], pred: F) -> Res
 }
 
 /// Read the `n`-th grid of a file (`nanovdb::io::readGrid(file, n)`).
+#[cfg(feature = "read")]
 pub fn read_grid<P: AsRef<Path>>(path: P, n: usize) -> Result<GridHandle> {
     select(&read_file(path)?, |i, _| i == n)?
         .ok_or_else(|| NanoError::InvalidFile(format!("file does not contain a #{} grid", n)))
 }
 
 /// Read the first grid with the given name (`nanovdb::io::readGrid(file, name)`).
+#[cfg(feature = "read")]
 pub fn read_grid_by_name<P: AsRef<Path>>(path: P, name: &str) -> Result<GridHandle> {
     let key = string_hash(name);
     select(&read_file(path)?, |_, m| (m.name_key == 0 || m.name_key == key) && m.grid_name == name)?
@@ -469,6 +507,7 @@ pub fn read_grid_by_name<P: AsRef<Path>>(path: P, name: &str) -> Result<GridHand
 
 /// Read the meta data of all grids in a file without decompressing them
 /// (`nanovdb::io::readGridMetaData`).
+#[cfg(feature = "read")]
 pub fn read_grid_meta_data<P: AsRef<Path>>(path: P) -> Result<Vec<FileGridMetaData>> {
     let bytes = read_file(path)?;
     match parse(&bytes)? {
@@ -481,6 +520,7 @@ pub fn read_grid_meta_data<P: AsRef<Path>>(path: P) -> Result<Vec<FileGridMetaDa
 }
 
 /// True if the file contains a grid with the given name (`nanovdb::io::hasGrid`).
+#[cfg(feature = "read")]
 pub fn has_grid<P: AsRef<Path>>(path: P, name: &str) -> Result<bool> {
     let key = string_hash(name);
     Ok(read_grid_meta_data(path)?.iter().any(|m| m.name_key == key && m.grid_name == name))

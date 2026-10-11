@@ -9,6 +9,20 @@
 //! * [`grid`] — grids (tree + transform + metadata)
 //! * [`metadata`] — typed metadata maps
 //!
+//! # Cargo features
+//!
+//! All features are enabled by default.
+//!
+//! * `read` — read `.vdb` files and streams ([`io`]), and `.nvdb` files with `nanovdb`.
+//! * `write` — write `.vdb` files and streams, `.nvdb` files with `nanovdb`, and images
+//!   ([`tools::ray_tracer::Film::save_ppm`]). This feature gates every function that creates
+//!   or writes files and every encoder of the file formats: a build without it (for example
+//!   `default-features = false, features = ["read"]`) cannot write to disk.
+//! * `nanovdb` — the [`nanovdb`] module.
+//!
+//! The [`io`] module exists when `read` or `write` is enabled; the zip and LZ4 dependencies
+//! are only pulled in by these two features.
+//!
 //! ```
 //! use vdb::prelude::*;
 //!
@@ -27,6 +41,7 @@
 //! use vdb::prelude::*;
 //! use vdb::tools::level_set_sphere::create_level_set_sphere;
 //!
+//! # #[cfg(all(feature = "read", feature = "write"))]
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let sphere: FloatGrid = create_level_set_sphere(1.0, Vec3f::zero(), 0.05, 3.0, true)?;
 //! let path = std::env::temp_dir().join("vdb_doctest_sphere.vdb");
@@ -36,12 +51,16 @@
 //! # std::fs::remove_file(&path).ok();
 //! # Ok(())
 //! # }
+//! # #[cfg(not(all(feature = "read", feature = "write")))]
+//! # fn main() {}
 //! ```
 
 pub mod grid;
+#[cfg(any(feature = "read", feature = "write"))]
 pub mod io;
 pub mod math;
 pub mod metadata;
+#[cfg(feature = "nanovdb")]
 pub mod nanovdb;
 pub mod points;
 pub mod tools;

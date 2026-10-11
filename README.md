@@ -20,6 +20,26 @@ vdb::io::write_file("sphere.vdb", &[sphere.into()], &MetaMap::new())?;
 let (_meta, grids) = vdb::io::read_file("sphere.vdb")?;
 ```
 
+## Cargo features
+
+All features are on by default.
+
+| Feature | Enables |
+|---------|---------|
+| `read` | Reading `.vdb` files and streams (`io`), and `.nvdb` files with `nanovdb` |
+| `write` | Writing `.vdb` files and streams, `.nvdb` files with `nanovdb`, and `Film::save_ppm`. Every function that creates or writes files is behind this feature |
+| `nanovdb` | The `nanovdb` module |
+
+To only read files, and to guarantee the crate contains no code that writes to disk:
+
+```toml
+[dependencies]
+vdb = { version = "0.1", default-features = false, features = ["read"] }
+```
+
+Without `read` and `write` the `io` module is not built and the `flate2` and `lz4_flex`
+dependencies are not pulled in.
+
 ## What's ported
 
 | Area | Rust module | Notes |
@@ -63,6 +83,8 @@ cargo run --release --example nanovdb_sphere
 
 ```sh
 cargo test
+# Reduced feature sets build and test too, e.g. read-only:
+cargo test --no-default-features --features read
 ```
 
 Tests include:

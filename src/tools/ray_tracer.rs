@@ -17,6 +17,7 @@
 //! let mut film = Film::new(320, 240);
 //! let camera = PerspectiveCamera::new(&film, Vec3d::zero(), Vec3d::new(0.0, 0.0, 5.0), 50.0, 41.2136);
 //! ray_trace(&grid, &DiffuseShader::new(Default::default()), &camera, &mut film, 1, 0).unwrap();
+//! # #[cfg(feature = "write")]
 //! film.save_ppm("sphere.ppm").unwrap();
 //! ```
 
@@ -176,7 +177,9 @@ impl Film {
         write!(w, "P6\n{} {}\n255\n", self.width, self.height)?;
         w.write_all(&self.to_bytes(false))
     }
-    /// Save a binary PPM file (".ppm" is appended if the name has no extension).
+    /// Save a binary PPM file (".ppm" is appended if the name has no extension). Requires
+    /// the `write` feature.
+    #[cfg(feature = "write")]
     pub fn save_ppm(&self, path: &str) -> std::io::Result<()> {
         let mut name = path.to_string();
         if !name.contains('.') {

@@ -1,12 +1,22 @@
 //! Transform serialization: the map's registered type name followed by its payload,
 //! delegating to the exact ports of OpenVDB's map `read`/`write` in [`crate::math::maps`].
 
-use super::bytes::{Reader, WriteLe};
-use super::error::{Error, Result};
-use crate::math::{MapBase, Transform};
+#[cfg(feature = "read")]
+use super::bytes::Reader;
+#[cfg(feature = "write")]
+use super::bytes::WriteLe;
+#[cfg(feature = "read")]
+use super::error::Error;
+use super::error::Result;
+#[cfg(feature = "read")]
+use crate::math::MapBase;
+#[cfg(feature = "write")]
+use crate::math::Transform;
+#[cfg(feature = "read")]
 use std::io::Read;
 
 /// Read the payload of a map of the given registered type.
+#[cfg(feature = "read")]
 pub(crate) fn read_map<R: Read>(r: &mut Reader<R>, type_name: &str) -> Result<MapBase> {
     if !MapBase::is_registered(type_name) {
         return Err(Error::Unsupported(format!("map type \"{}\"", type_name)));
@@ -19,13 +29,14 @@ pub(crate) fn read_map<R: Read>(r: &mut Reader<R>, type_name: &str) -> Result<Ma
 }
 
 /// Write a transform as OpenVDB's `Transform::write` does.
+#[cfg(feature = "write")]
 pub(crate) fn write_transform(out: &mut Vec<u8>, t: &Transform) -> Result<()> {
     out.put_string(t.map().type_name());
     t.map().write(out)?;
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read", feature = "write"))]
 mod tests {
     use super::*;
     use crate::math::{Axis, Vec3d};

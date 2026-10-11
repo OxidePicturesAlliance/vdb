@@ -20,30 +20,62 @@
 //! pass and the page data in the data pass. Without Blosc, each array is written directly.
 
 use super::blosc;
-use super::bytes::{Reader, WriteLe};
-use super::compression::{read_mask, write_mask, Compression};
+#[cfg(feature = "read")]
+use super::bytes::Reader;
+#[cfg(feature = "write")]
+use super::bytes::WriteLe;
+#[cfg(feature = "read")]
+use super::compression::read_mask;
+#[cfg(feature = "write")]
+use super::compression::write_mask;
+use super::compression::Compression;
+#[cfg(feature = "read")]
 use super::error::{Error, Result};
-use super::metadata_io::{read_meta_map, write_meta_map};
-use super::tree_io::{read_tree_topology, write_ctx, write_tree_topology, LeafFormat, NodeIo};
-use crate::points::{AttributeArray, AttributeSet, AttributeType, Descriptor, PointDataTree, PointLeaf};
+#[cfg(feature = "read")]
+use super::metadata_io::read_meta_map;
+#[cfg(feature = "write")]
+use super::metadata_io::write_meta_map;
+#[cfg(feature = "read")]
+use super::tree_io::read_tree_topology;
+#[cfg(feature = "write")]
+use super::tree_io::{write_ctx, write_tree_topology};
+use super::tree_io::{LeafFormat, NodeIo};
+#[cfg(feature = "read")]
+use crate::points::AttributeType;
+#[cfg(feature = "write")]
+use crate::points::PointLeaf;
+use crate::points::{AttributeArray, AttributeSet, Descriptor, PointDataTree};
 use crate::tools::point_index_grid::PointIndexTree;
-use crate::tree::{Internal2, LeafNode, Node, Tree};
+use crate::tree::Node;
+#[cfg(feature = "write")]
+use crate::tree::Tree;
+#[cfg(feature = "read")]
+use crate::tree::{Internal2, LeafNode};
+#[cfg(feature = "write")]
 use rayon::prelude::*;
+#[cfg(feature = "write")]
 use std::borrow::Cow;
+#[cfg(feature = "read")]
 use std::collections::{BTreeMap, HashMap};
+#[cfg(feature = "read")]
 use std::io::Read;
+#[cfg(feature = "read")]
 use std::sync::Arc;
 
 /// File format version that introduced multi-pass leaf I/O.
+#[cfg(feature = "read")]
 const FILE_VERSION_MULTIPASS_IO: u32 = 224;
 /// Size of the pages of paged streams (`compression::PageSize`).
+#[cfg(feature = "write")]
 pub(crate) const PAGE_SIZE: usize = 1024 * 1024;
 /// Inputs up to this size are never Blosc compressed (`BLOSC_MINIMUM_BYTES`).
+#[cfg(feature = "write")]
 const BLOSC_MINIMUM_BYTES: usize = 48;
 /// Inputs smaller than this are zero-padded before compression (`BLOSC_PAD_BYTES`).
 const BLOSC_PAD_BYTES: usize = 128;
 
 /// Attribute serialization flags (`AttributeArray::SerializationFlag`).
+#[cfg(any(feature = "read", feature = "write"))]
 const WRITE_STRIDED: u8 = 0x1;
 const WRITE_UNIFORM: u8 = 0x2;
 const WRITE_PAGED: u8 = 0x8;
@@ -53,6 +85,7 @@ const PARTIAL_READ: u8 = 0x20;
 /// Blosc compression as `compression::bloscCompress` does it: no compression for inputs of
 /// at most 48 bytes, zero padding to 128 bytes for small inputs, and `None` unless the
 /// result is smaller than the input.
+#[cfg(feature = "write")]
 pub(crate) fn blosc_compress(data: &[u8]) -> Option<Vec<u8>> {
     if data.len() <= BLOSC_MINIMUM_BYTES {
         return None;
@@ -69,6 +102,7 @@ pub(crate) fn blosc_compress(data: &[u8]) -> Option<Vec<u8>> {
 
 /// Decompress a Blosc frame of `expected` bytes (frames of small inputs may decompress to the
 /// 128 padded bytes).
+#[cfg(feature = "read")]
 pub(crate) fn blosc_decompress(frame: &[u8], expected: usize) -> Result<Vec<u8>> {
     let mut out = blosc::decompress(frame)?;
     if out.len() == BLOSC_PAD_BYTES && expected <= BLOSC_PAD_BYTES {
@@ -83,6 +117,7 @@ pub(crate) fn blosc_decompress(frame: &[u8], expected: usize) -> Result<Vec<u8>>
 // Descriptors
 
 /// Read an attribute set descriptor (`Descriptor::read`).
+#[cfg(feature = "read")]
 pub(crate) fn read_descriptor<R: Read>(r: &mut Reader<R>) -> Result<Descriptor> {
     let n = r.read_u64()? as usize;
     if n > 1 << 20 {
@@ -121,6 +156,7 @@ pub(crate) fn read_descriptor<R: Read>(r: &mut Reader<R>) -> Result<Descriptor> 
 }
 
 /// Write an attribute set descriptor (`Descriptor::write`).
+#[cfg(feature = "write")]
 pub(crate) fn write_descriptor(out: &mut Vec<u8>, d: &Descriptor) {
     out.put_u64(d.size() as u64);
     for t in d.types() {
@@ -143,6 +179,7 @@ pub(crate) fn write_descriptor(out: &mut Vec<u8>, d: &Descriptor) {
 // Attribute array headers and buffers
 
 /// An attribute array header (`TypedAttributeArray::readMetadata`).
+#[cfg(feature = "read")]
 #[derive(Clone, Debug)]
 struct ArrayHeader {
     flags: u8,
@@ -154,6 +191,7 @@ struct ArrayHeader {
     bytes: usize,
 }
 
+#[cfg(feature = "read")]
 fn read_array_header<R: Read>(r: &mut Reader<R>) -> Result<ArrayHeader> {
     let bytes = r.read_u64()?;
     let flags = r.read_u8()?;
@@ -175,6 +213,7 @@ fn read_array_header<R: Read>(r: &mut Reader<R>) -> Result<ArrayHeader> {
 }
 
 /// Write an array header for multi-pass leaf output (`writeMetadata(os, false, paged=true)`).
+#[cfg(feature = "write")]
 fn write_array_header(out: &mut Vec<u8>, a: &AttributeArray, blosc: bool) {
     let strided = a.stride() != 1;
     let mut ser = 0u8;
@@ -197,6 +236,7 @@ fn write_array_header(out: &mut Vec<u8>, a: &AttributeArray, blosc: bool) {
 }
 
 /// Write unpaged array data (`TypedAttributeArray::writeBuffers` without Blosc).
+#[cfg(feature = "write")]
 fn write_array_buffers(out: &mut Vec<u8>, a: &AttributeArray) {
     if !a.is_uniform() {
         out.put_u8(0);
@@ -205,6 +245,7 @@ fn write_array_buffers(out: &mut Vec<u8>, a: &AttributeArray) {
 }
 
 /// Read unpaged array data (`TypedAttributeArray::readBuffers`).
+#[cfg(feature = "read")]
 fn read_array_buffers<R: Read>(r: &mut Reader<R>, h: &ArrayHeader, storage_size: usize) -> Result<Vec<u8>> {
     let compressed = if h.uniform { false } else { r.read_u8()? == 1 };
     let data = r.read_bytes(h.bytes)?;
@@ -216,6 +257,7 @@ fn read_array_buffers<R: Read>(r: &mut Reader<R>, h: &ArrayHeader, storage_size:
     }
 }
 
+#[cfg(feature = "read")]
 fn data_size(h: &ArrayHeader) -> u32 {
     if h.flags & crate::points::attribute_array::FLAG_CONSTANT_STRIDE != 0 {
         h.size * h.stride_or_total
@@ -229,11 +271,13 @@ fn data_size(h: &ArrayHeader) -> u32 {
 
 /// Writes data in Blosc-compressed pages (`compression::PagedOutputStream`). In size-only
 /// mode only the page headers are written; otherwise only the page data.
+#[cfg(feature = "write")]
 struct PagedOutputStream {
     page: Vec<u8>,
     size_only: bool,
 }
 
+#[cfg(feature = "write")]
 impl PagedOutputStream {
     fn new(size_only: bool) -> Self {
         PagedOutputStream { page: Vec::new(), size_only }
@@ -273,6 +317,7 @@ impl PagedOutputStream {
 }
 
 /// A reference to a part of a page (`compression::PageHandle`).
+#[cfg(feature = "read")]
 #[derive(Clone, Copy, Debug)]
 struct PageHandle {
     page: usize,
@@ -282,6 +327,7 @@ struct PageHandle {
 
 /// Reads paged data (`compression::PagedInputStream`): handles are created while reading
 /// the page headers (size pass) and resolved while reading the page data (data pass).
+#[cfg(feature = "read")]
 #[derive(Default)]
 struct PagedInputStream {
     /// (compressed bytes, uncompressed bytes) of each page; negative compressed sizes mark
@@ -292,6 +338,7 @@ struct PagedInputStream {
     uncompressed: usize,
 }
 
+#[cfg(feature = "read")]
 impl PagedInputStream {
     fn create_handle<R: Read>(&mut self, r: &mut Reader<R>, n: usize) -> Result<PageHandle> {
         if self.byte_index == self.uncompressed || self.pages.is_empty() {
@@ -342,6 +389,7 @@ impl PagedInputStream {
 // Point data trees
 
 /// Per-leaf state while reading the passes.
+#[cfg(feature = "read")]
 #[derive(Default)]
 struct LeafState {
     descriptor: Option<Arc<Descriptor>>,
@@ -351,6 +399,7 @@ struct LeafState {
 }
 
 /// Read a point data tree (topology and multi-pass buffers).
+#[cfg(feature = "read")]
 pub(crate) fn read_point_data_tree<R: Read>(
     r: &mut Reader<R>,
     file_version: u32,
@@ -470,6 +519,7 @@ pub(crate) fn read_point_data_tree<R: Read>(
 }
 
 /// The attribute set of a leaf without its transient arrays.
+#[cfg(feature = "write")]
 fn persistent_set(set: &AttributeSet) -> Cow<'_, AttributeSet> {
     let transient: Vec<usize> = (0..set.size()).filter(|&i| set.get(i).is_some_and(|a| a.is_transient())).collect();
     if transient.is_empty() {
@@ -483,6 +533,7 @@ fn persistent_set(set: &AttributeSet) -> Cow<'_, AttributeSet> {
 
 /// Write a point data tree's topology and multi-pass buffers. `block_pos` receives the offset
 /// of the buffers.
+#[cfg(feature = "write")]
 pub(crate) fn write_point_data_tree(
     out: &mut Vec<u8>,
     tree: &PointDataTree,
@@ -584,6 +635,7 @@ pub(crate) fn write_point_data_tree(
 
 /// Read a point index tree (`PointIndexLeafNode::readBuffers`: the standard leaf buffers
 /// followed by the leaf's index array and an auxiliary data block).
+#[cfg(feature = "read")]
 pub(crate) fn read_point_index_tree<R: Read>(
     r: &mut Reader<R>,
     file_version: u32,
@@ -605,6 +657,7 @@ pub(crate) fn read_point_index_tree<R: Read>(
 }
 
 /// Write a point index tree's topology and buffers.
+#[cfg(feature = "write")]
 pub(crate) fn write_point_index_tree(
     out: &mut Vec<u8>,
     tree: &PointIndexTree,
@@ -626,7 +679,7 @@ pub(crate) fn write_point_index_tree(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read", feature = "write"))]
 mod tests {
     use super::*;
     use crate::math::{Coord, Vec3f};

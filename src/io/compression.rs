@@ -1,13 +1,21 @@
 //! Compression of node value buffers (port of `openvdb/io/Compression.h/.cc`).
 
 use super::blosc;
-use super::bytes::{Reader, WriteLe};
+#[cfg(feature = "read")]
+use super::bytes::Reader;
+#[cfg(feature = "write")]
+use super::bytes::WriteLe;
+#[cfg(feature = "read")]
 use super::error::{Error, Result};
 use super::value_io::IoValue;
 use crate::util::NodeMask;
+#[cfg(feature = "read")]
 use std::cell::RefCell;
 use std::fmt;
-use std::io::{Read, Write};
+#[cfg(feature = "read")]
+use std::io::Read;
+#[cfg(feature = "write")]
+use std::io::Write;
 
 /// Compression flags of a grid (OpenVDB's `COMPRESS_*` bit set).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -66,6 +74,7 @@ impl fmt::Display for Compression {
 
 // Per-node metadata byte describing how inactive values were stored.
 pub(crate) const NO_MASK_OR_INACTIVE_VALS: i8 = 0;
+#[cfg_attr(not(feature = "write"), allow(dead_code))]
 pub(crate) const NO_MASK_AND_MINUS_BG: i8 = 1;
 pub(crate) const NO_MASK_AND_ONE_INACTIVE_VAL: i8 = 2;
 pub(crate) const MASK_AND_NO_INACTIVE_VALS: i8 = 3;
@@ -74,11 +83,13 @@ pub(crate) const MASK_AND_TWO_INACTIVE_VALS: i8 = 5;
 pub(crate) const NO_MASK_AND_ALL_VALS: i8 = 6;
 
 /// File format version that introduced the per-node metadata byte.
+#[cfg(feature = "read")]
 pub(crate) const FILE_VERSION_NODE_MASK_COMPRESSION: u32 = 222;
 
 /// Settings in effect while reading or writing one grid's tree.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ValueCodec<T> {
+    #[cfg_attr(not(feature = "read"), allow(dead_code))]
     pub file_version: u32,
     pub compression: Compression,
     /// Values of floating-point types are stored as 16-bit half floats.
@@ -94,12 +105,14 @@ impl<T: IoValue> ValueCodec<T> {
 
 /// Buffers and zlib state reused across the node buffers read by one thread, so reading a
 /// leaf allocates nothing.
+#[cfg(feature = "read")]
 struct ReadScratch {
     bytes: Vec<u8>,
     compressed: Vec<u8>,
     inflate: flate2::Decompress,
 }
 
+#[cfg(feature = "read")]
 thread_local! {
     static SCRATCH: RefCell<ReadScratch> = RefCell::new(ReadScratch {
         bytes: Vec::new(),
@@ -110,6 +123,7 @@ thread_local! {
 
 /// Read a (possibly compressed) chunk that decompresses to exactly `out.len()` bytes into `out`
 /// (OpenVDB's `readData`, `unzipFromStream` and `bloscFromStream`).
+#[cfg(feature = "read")]
 fn read_data_into<R: Read>(r: &mut Reader<R>, out: &mut [u8], c: Compression, s: &mut ReadScratch) -> Result<()> {
     let nbytes = out.len();
     let is_blosc = c.contains(Compression::BLOSC);
@@ -150,6 +164,7 @@ fn read_data_into<R: Read>(r: &mut Reader<R>, out: &mut [u8], c: Compression, s:
 
 /// Write a chunk with the given compression (OpenVDB's `writeData`, `zipToStream` and
 /// `bloscToStream`).
+#[cfg(feature = "write")]
 pub(crate) fn write_data(out: &mut Vec<u8>, data: &[u8], c: Compression) {
     if c.contains(Compression::BLOSC) {
         if data.is_empty() {
@@ -179,6 +194,7 @@ pub(crate) fn write_data(out: &mut Vec<u8>, data: &[u8], c: Compression) {
 
 /// Read the encoded bytes of `count` values into `s.bytes` and return the size of one encoded
 /// value (values of real types are stored as half floats if `half` is set).
+#[cfg(feature = "read")]
 fn read_value_bytes<T: IoValue, R: Read>(
     r: &mut Reader<R>,
     count: usize,
@@ -200,6 +216,7 @@ fn read_value_bytes<T: IoValue, R: Read>(
 }
 
 /// Decode consecutive values of `size` bytes from `bytes` into `dest`.
+#[cfg(feature = "read")]
 #[inline(always)]
 fn decode_all<T>(dest: &mut [T], bytes: &[u8], size: usize, decode: impl Fn(&[u8]) -> T) {
     for (d, b) in dest.iter_mut().zip(bytes.chunks_exact(size)) {
@@ -209,6 +226,7 @@ fn decode_all<T>(dest: &mut [T], bytes: &[u8], size: usize, decode: impl Fn(&[u8
 
 /// Decode consecutive values from `bytes` into the slots of `dest` whose `on` bit is set, and
 /// fill the other slots with `inactive1` where the `sel` bit is set and `inactive0` elsewhere.
+#[cfg(feature = "read")]
 #[inline(always)]
 fn decode_masked<T: Copy>(
     dest: &mut [T],
@@ -240,6 +258,7 @@ fn decode_masked<T: Copy>(
     }
 }
 
+#[cfg(feature = "write")]
 fn write_values<T: IoValue>(out: &mut Vec<u8>, values: &[T], codec: &ValueCodec<T>) {
     if codec.half_values() {
         if values.is_empty() {
@@ -263,6 +282,7 @@ fn write_values<T: IoValue>(out: &mut Vec<u8>, values: &[T], codec: &ValueCodec<
 ///
 /// `dest_count` is normally `NodeMask::SIZE`; files older than version 222 store only the
 /// non-child values of internal nodes, in which case it may be smaller.
+#[cfg(feature = "read")]
 pub(crate) fn read_compressed_values<T: IoValue, R: Read, const L: u32>(
     r: &mut Reader<R>,
     dest_count: usize,
@@ -275,6 +295,7 @@ pub(crate) fn read_compressed_values<T: IoValue, R: Read, const L: u32>(
 }
 
 /// [`read_compressed_values`] into an existing buffer of `dest_count` values.
+#[cfg(feature = "read")]
 pub(crate) fn read_compressed_values_into<T: IoValue, R: Read, const L: u32>(
     r: &mut Reader<R>,
     dest: &mut [T],
@@ -340,6 +361,7 @@ pub(crate) fn read_compressed_values_into<T: IoValue, R: Read, const L: u32>(
 
 /// Write a node's value buffer (port of `writeCompressedValues`). Values in slots whose
 /// `child_mask` bit is on are ignored when choosing the inactive-value encoding.
+#[cfg(feature = "write")]
 pub(crate) fn write_compressed_values<T: IoValue, const L: u32>(
     out: &mut Vec<u8>,
     src: &[T],
@@ -384,6 +406,7 @@ pub(crate) fn write_compressed_values<T: IoValue, const L: u32>(
 }
 
 /// Choose the inactive-value encoding of a node (port of `MaskCompress`).
+#[cfg(feature = "write")]
 fn mask_compress<T: IoValue, const L: u32>(
     src: &[T],
     value_mask: &NodeMask<L>,
@@ -445,6 +468,7 @@ fn mask_compress<T: IoValue, const L: u32>(
 }
 
 /// Read a node mask stored as little-endian 64-bit words.
+#[cfg(feature = "read")]
 pub(crate) fn read_mask<R: Read, const L: u32>(r: &mut Reader<R>, mask: &mut NodeMask<L>) -> Result<()> {
     let n = NodeMask::<L>::WORD_COUNT;
     let b = r.read_bytes(n * 8)?;
@@ -455,13 +479,14 @@ pub(crate) fn read_mask<R: Read, const L: u32>(r: &mut Reader<R>, mask: &mut Nod
 }
 
 /// Write a node mask as little-endian 64-bit words.
+#[cfg(feature = "write")]
 pub(crate) fn write_mask<const L: u32>(out: &mut Vec<u8>, mask: &NodeMask<L>) {
     for w in mask.words() {
         out.extend_from_slice(&w.to_le_bytes());
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read", feature = "write"))]
 mod tests {
     use super::*;
 

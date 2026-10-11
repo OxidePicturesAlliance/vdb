@@ -1,19 +1,50 @@
 //! File header, grid descriptors and per-grid reading and writing (port of
 //! `openvdb/io/Archive.cc` and `openvdb/io/GridDescriptor.cc`).
 
-use super::bytes::{Reader, WriteLe};
-use super::compression::{Compression, FILE_VERSION_NODE_MASK_COMPRESSION};
-use super::error::{Error, Result};
-use super::metadata_io::{read_meta_map, write_meta_map};
-use super::transform_io::{read_map, write_transform};
-use super::tree_io::{read_tree, write_ctx, write_tree_buffers, write_tree_topology, LeafFormat};
+#[cfg(feature = "read")]
+use super::bytes::Reader;
+#[cfg(feature = "write")]
+use super::bytes::WriteLe;
+use super::compression::Compression;
+#[cfg(feature = "read")]
+use super::compression::FILE_VERSION_NODE_MASK_COMPRESSION;
+#[cfg(feature = "read")]
+use super::error::Error;
+#[cfg(any(feature = "read", feature = "write"))]
+use super::error::Result;
+#[cfg(feature = "read")]
+use super::metadata_io::read_meta_map;
+#[cfg(feature = "write")]
+use super::metadata_io::write_meta_map;
+#[cfg(feature = "read")]
+use super::transform_io::read_map;
+#[cfg(feature = "write")]
+use super::transform_io::write_transform;
+#[cfg(feature = "read")]
+use super::tree_io::read_tree;
+use super::tree_io::LeafFormat;
+#[cfg(feature = "write")]
+use super::tree_io::{write_ctx, write_tree_buffers, write_tree_topology};
+#[cfg(feature = "read")]
 use super::value_io::IoValue;
+#[cfg(feature = "write")]
 use super::{WriteOptions, FILE_VERSION, LIBRARY_MAJOR_VERSION, LIBRARY_MINOR_VERSION};
-use crate::grid::{meta_names, AnyGrid, Grid, GridClass};
-use crate::math::{Transform, Vec3i};
-use crate::metadata::{MetaMap, MetaValue};
+#[cfg(feature = "read")]
+use crate::grid::Grid;
+#[cfg(feature = "write")]
+use crate::grid::GridClass;
+use crate::grid::{meta_names, AnyGrid};
+#[cfg(feature = "read")]
+use crate::math::Transform;
+use crate::math::Vec3i;
+use crate::metadata::MetaMap;
+#[cfg(feature = "write")]
+use crate::metadata::MetaValue;
+#[cfg(feature = "read")]
 use crate::tree::{Internal2, Tree};
+#[cfg(feature = "write")]
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "read")]
 use std::io::Read;
 
 /// The magic number at the start of every `.vdb` file (`"VDB "` as a little-endian `i64`).
@@ -23,8 +54,10 @@ pub const MIN_FILE_VERSION: u32 = 220;
 /// Newest readable file format version (`OPENVDB_FILE_VERSION_HALF_GRID`).
 pub const MAX_FILE_VERSION: u32 = 225;
 /// File version from which the header no longer carries a compression flag.
+#[cfg(feature = "read")]
 const FILE_VERSION_BLOSC_COMPRESSION: u32 = 223;
 
+#[cfg(any(feature = "read", feature = "write"))]
 const HALF_FLOAT_TYPENAME_SUFFIX: &str = "_HalfFloat";
 const SEP: char = '\x1e';
 
@@ -53,6 +86,7 @@ impl FileHeader {
 }
 
 /// Read and validate a file header.
+#[cfg(feature = "read")]
 pub(crate) fn read_header<R: Read>(r: &mut Reader<R>) -> Result<FileHeader> {
     let magic = r.read_i64().map_err(|_| Error::NotVdb)?;
     if magic != MAGIC {
@@ -84,6 +118,7 @@ pub(crate) fn read_header<R: Read>(r: &mut Reader<R>) -> Result<FileHeader> {
 }
 
 /// Generate a random UUID string in OpenVDB's format.
+#[cfg(feature = "write")]
 fn new_uuid() -> String {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
@@ -100,6 +135,7 @@ fn new_uuid() -> String {
 }
 
 /// Write a file header (current format version, no header compression flag).
+#[cfg(feature = "write")]
 pub(crate) fn write_header(out: &mut Vec<u8>, seekable: bool) {
     out.put_i64(MAGIC);
     out.put_u32(FILE_VERSION);
@@ -152,6 +188,7 @@ impl GridDescriptor {
         name_as_string(&self.unique_name)
     }
 
+    #[cfg(feature = "read")]
     pub(crate) fn read<R: Read>(r: &mut Reader<R>) -> Result<Self> {
         let unique_name = r.read_string()?;
         let mut grid_type = r.read_string()?;
@@ -176,6 +213,7 @@ impl GridDescriptor {
         })
     }
 
+    #[cfg(feature = "write")]
     fn write_header(&self, out: &mut Vec<u8>) {
         out.put_string(&self.unique_name);
         let mut t = self.grid_type.clone();
@@ -252,6 +290,7 @@ impl GridKind {
 }
 
 /// Everything stored for a grid except its tree.
+#[cfg(feature = "read")]
 #[derive(Clone, Debug)]
 pub(crate) struct GridHead {
     pub compression: Compression,
@@ -263,6 +302,7 @@ pub(crate) struct GridHead {
 
 /// Read a grid's compression flags, metadata and transform. The reader must be positioned
 /// at the descriptor's `grid_pos`.
+#[cfg(feature = "read")]
 pub(crate) fn read_grid_head<R: Read>(r: &mut Reader<R>, header: &FileHeader) -> Result<GridHead> {
     let compression = if header.file_version >= FILE_VERSION_NODE_MASK_COMPRESSION {
         Compression(r.read_u32()?)
@@ -281,6 +321,7 @@ pub(crate) fn read_grid_head<R: Read>(r: &mut Reader<R>, header: &FileHeader) ->
     Ok(GridHead { compression, metadata, map_type, transform })
 }
 
+#[cfg(feature = "read")]
 fn typed_grid<T: IoValue>(tree: Tree<T>, transform: Transform, metadata: MetaMap) -> Grid<T> {
     let mut g = Grid::from_tree(tree).with_transform(transform);
     *g.metadata_mut() = metadata;
@@ -289,6 +330,7 @@ fn typed_grid<T: IoValue>(tree: Tree<T>, transform: Transform, metadata: MetaMap
 
 /// Read a grid's tree (if `read_tree_data`) and assemble the grid. The reader must be
 /// positioned right after the grid head.
+#[cfg(feature = "read")]
 pub(crate) fn read_grid_tree<R: Read>(
     r: &mut Reader<R>,
     header: &FileHeader,
@@ -344,6 +386,7 @@ pub(crate) fn read_grid_tree<R: Read>(
 
 /// Give `grid` a copy of `parent`'s tree (for instanced grids). Fails if the value types
 /// differ.
+#[cfg(feature = "read")]
 pub(crate) fn copy_tree_from(grid: &mut AnyGrid, parent: &AnyGrid) -> Result<()> {
     macro_rules! copy {
         ($($v:ident),*) => {
@@ -373,6 +416,7 @@ pub(crate) fn copy_tree_from(grid: &mut AnyGrid, parent: &AnyGrid) -> Result<()>
 
 /// Grid statistics metadata as OpenVDB's `GridBase::addStatsMetadata` computes it
 /// (an empty grid gets an inverted bounding box).
+#[cfg(feature = "write")]
 fn add_stats_metadata(meta: &mut MetaMap, grid: &AnyGrid) {
     let bbox = grid.eval_active_voxel_bbox();
     let (min, max) = if bbox.is_empty() {
@@ -388,6 +432,7 @@ fn add_stats_metadata(meta: &mut MetaMap, grid: &AnyGrid) {
 }
 
 /// Compression actually used for a grid: zip is never applied to level sets and fog volumes.
+#[cfg(feature = "write")]
 pub(crate) fn grid_compression(c: Compression, grid: &AnyGrid) -> Compression {
     match grid.grid_class() {
         GridClass::LevelSet | GridClass::FogVolume => c.without(Compression::ZIP),
@@ -397,6 +442,7 @@ pub(crate) fn grid_compression(c: Compression, grid: &AnyGrid) -> Compression {
 
 /// Write a complete archive (header, file metadata, grids) into a buffer
 /// (port of `Archive::write`). Offsets are filled in when `seekable` is set.
+#[cfg(feature = "write")]
 pub(crate) fn write_archive(
     grids: &[&AnyGrid],
     meta: &MetaMap,
@@ -431,6 +477,7 @@ pub(crate) fn write_archive(
     Ok(out)
 }
 
+#[cfg(feature = "write")]
 fn write_grid(
     out: &mut Vec<u8>,
     grid: &AnyGrid,
@@ -515,6 +562,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "read", feature = "write"))]
     fn header_roundtrip() {
         let mut out = Vec::new();
         write_header(&mut out, true);
