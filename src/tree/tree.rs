@@ -200,13 +200,13 @@ impl<C: Node> TreeBase<C> {
     where
         F: Fn(&mut LeafNode<C::Value>) + Send + Sync,
     {
-        self.leaf_refs_mut().into_par_iter().for_each(|l| f(l));
+        self.leaf_refs_mut().into_par_iter().for_each(f);
     }
     pub fn par_for_each_leaf<F>(&self, f: F)
     where
         F: Fn(&LeafNode<C::Value>) + Send + Sync,
     {
-        self.leaf_refs().into_par_iter().for_each(|l| f(l));
+        self.leaf_refs().into_par_iter().for_each(f);
     }
     /// Iterate over `(coord, value)` for every active *voxel* (tiles are not included;
     /// see [`visit_tiles`](Self::visit_tiles) and [`iter_values_on`](Self::iter_values_on)).

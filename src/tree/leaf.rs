@@ -21,7 +21,7 @@ impl<T: Value> LeafNode<T> {
     /// Linear offset of the voxel at `xyz` within its leaf.
     #[inline]
     pub fn coord_to_offset(xyz: &Coord) -> usize {
-        ((((xyz[0] & 7) as usize) << 6) | (((xyz[1] & 7) as usize) << 3) | ((xyz[2] & 7) as usize)) as usize
+        (((xyz[0] & 7) as usize) << 6) | (((xyz[1] & 7) as usize) << 3) | ((xyz[2] & 7) as usize)
     }
     /// Local (0..8) coordinates for a linear offset.
     #[inline]

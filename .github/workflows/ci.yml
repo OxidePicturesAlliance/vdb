@@ -23,9 +23,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --check
-      # Not yet -D warnings: the existing code base still has clippy warnings.
       - name: Clippy
-        run: cargo clippy --all-targets
+        run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
       - name: Test (no default features)

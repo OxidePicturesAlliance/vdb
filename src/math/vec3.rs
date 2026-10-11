@@ -182,7 +182,7 @@ impl<T: Float> Vec3<T> {
         if l <= T::epsilon() {
             return false;
         }
-        *self = *self / l;
+        *self /= l;
         true
     }
     #[inline]

@@ -106,19 +106,19 @@ mod tests {
         assert_eq!(r.transform(), g.transform());
         let (n, leaves, bg, sum, vals) = report(&r);
         assert_eq!((n, leaves), (7709, 50));
-        assert_eq!(bg, 0.300000012);
+        assert_eq!(bg, 0.3);
         assert!((sum - 450.685225).abs() < 1e-6 * 450.685225, "{sum}");
-        assert_eq!(vals[0], -0.300000012);
-        assert_eq!(vals[1], 0.300000012);
-        assert!((vals[2] - -0.00796538498).abs() < 1e-7);
+        assert_eq!(vals[0], -0.3);
+        assert_eq!(vals[1], 0.3);
+        assert!((vals[2] - -0.007_965_385).abs() < 1e-7);
         // Asymmetric band, other isovalue, into a finer transform.
         let xf = Transform::linear(0.05);
         let r = level_set_rebuild_asymmetric(&g, 0.02, 2.0, 4.0, Some(&xf));
         assert_eq!(r.transform(), &xf);
         let (n, leaves, bg, sum, vals) = report(&r);
         assert_eq!((n, leaves), (28334, 158));
-        assert_eq!(bg, 0.100000001);
+        assert_eq!(bg, 0.1);
         assert!((sum - -971.830653).abs() < 1e-6 * 971.830653, "{sum}");
-        assert_eq!(vals, [-0.200000003, -0.200000003, -0.200000003, 0.100000001]);
+        assert_eq!(vals, [-0.2, -0.2, -0.2, 0.1]);
     }
 }
