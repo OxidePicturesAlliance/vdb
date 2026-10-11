@@ -121,6 +121,14 @@ Selected rows (ratios below 1 mean Rust is faster):
 | `ls_filter_mean_curvature` | 1.41× → 1.00× | 1.52× → 1.00× |
 | `gradient` / `laplacian` / `mean_curvature` | 0.83–1.27× → 0.58–0.91× | 0.87–1.06× → 0.52–0.61× |
 
+
+To run the bench in pixi:
+```bash
+pixi run bench-compare                       # all benchmarks
+pixi run bench-compare --threads 1 --reps 3  # single-threade
+```
+
+
 What made the difference:
 
 - **Tree core:** small node masks (including every leaf's) are stored inline instead of in a

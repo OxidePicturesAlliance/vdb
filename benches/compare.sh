@@ -3,9 +3,10 @@
 #
 #   benches/compare.sh [filter] [--reps N] [--threads N]
 #
-# Requires OpenVDB 10 (headers + libopenvdb), TBB and Imath for the C++ side, e.g.
-# `apt install libopenvdb-dev libboost-dev` on Ubuntu. Set CXX / CXXFLAGS to override the
-# compiler and flags.
+# Requires OpenVDB (headers + libopenvdb), TBB and Imath for the C++ side, e.g.
+# `apt install libopenvdb-dev libboost-dev` on Ubuntu, or run it through pixi
+# (`pixi run bench-compare`, see pixi.toml), which provides OpenVDB 13. Set CXX / CXXFLAGS
+# to override the compiler and flags.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="${VDB_BENCH_OUT:-$root/target/bench-compare}"
@@ -14,9 +15,15 @@ mkdir -p "$out"
 cxx="${CXX:-g++}"
 cxxflags="${CXXFLAGS:--O3 -DNDEBUG}"
 cpp_bin="$out/compare_cpp"
+cpp_libs=(-lopenvdb -ltbb -lImath-3_1)
+if [[ -n "${PIXI_PROJECT_ROOT:-}" && -n "${CONDA_PREFIX:-}" ]]; then
+    # Inside a pixi environment: link its OpenVDB (built with its own half type, so no Imath).
+    cpp_bin="$out/compare_cpp_pixi"
+    cpp_libs=(-I"$CONDA_PREFIX/include" -L"$CONDA_PREFIX/lib" -Wl,-rpath,"$CONDA_PREFIX/lib" -lopenvdb -ltbb)
+fi
 if [[ ! -x "$cpp_bin" || "$root/benches/cpp/compare.cpp" -nt "$cpp_bin" ]]; then
     echo "building C++ benchmark ($cxx $cxxflags)" >&2
-    $cxx -std=c++17 $cxxflags "$root/benches/cpp/compare.cpp" -o "$cpp_bin" -lopenvdb -ltbb -lImath-3_1
+    $cxx -std=c++17 $cxxflags "$root/benches/cpp/compare.cpp" -o "$cpp_bin" "${cpp_libs[@]}"
 fi
 (cd "$root" && cargo build --release --bench compare --quiet)
 rust_bin="$(cd "$root" && cargo bench --bench compare --no-run --message-format=json 2>/dev/null \

@@ -5,6 +5,7 @@ edition = "2021"
 description = "A Rust port of OpenVDB: sparse volumetric data structures and tools"
 license = "MIT"
 repository = "https://github.com/OxidePicturesAlliance/vdb"
+exclude = ["pixi.toml", "pixi.lock"]
 
 [features]
 default = ["read", "write", "nanovdb"]

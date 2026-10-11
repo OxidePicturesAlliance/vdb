@@ -14,7 +14,16 @@ cargo bench --bench compare -- [filter] [--reps N] [--threads N]   # Rust side o
 ```
 
 The C++ side needs OpenVDB 10 with TBB and Imath (`apt install libopenvdb-dev libboost-dev`
-on Ubuntu 24.04). The script builds it with `g++ -O3 -DNDEBUG` (override with `CXX` /
+on Ubuntu 24.04). Where the distribution's OpenVDB is too old (e.g. 9.x on RHEL/Rocky),
+use the pixi environment in `pixi.toml`, which installs OpenVDB 13.1, TBB and a matching
+g++ from [Anders Langlands' ASWF channel](https://github.com/anderslanglands/aswf-pixi)
+and conda-forge:
+
+```sh
+pixi run bench-compare [filter] [--reps N] [--threads N]
+```
+
+The script builds it with `g++ -O3 -DNDEBUG` (override with `CXX` /
 `CXXFLAGS`), builds the Rust side with the default `bench` profile, and prints a Markdown
 table. Raw outputs go to `target/bench-compare/{rust,cpp}.tsv`. Times are the median of the
 repetitions; setup (copying input grids, generating inputs) is not timed.
