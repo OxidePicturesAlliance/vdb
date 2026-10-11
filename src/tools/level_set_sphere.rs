@@ -91,10 +91,21 @@ pub fn create_level_set_sphere<T: RealValue + ToolValue>(
 
     let tree = grid.tree_mut();
     if threaded {
-        // Mirror tbb::blocked_range<int>(imin, imax, 128): split into chunks of x-slices.
-        let chunks: Vec<(i32, i32)> = (imin..imax).step_by(64).map(|i0| (i0, (i0 + 64).min(imax))).collect();
-        let parts: Vec<Tree<T>> = chunks.par_iter().map(|&(a, b)| kernel(a, b)).collect();
-        for mut p in parts {
+        // Split into slabs of x-slices aligned to leaf boundaries, so that the slabs' trees
+        // share no leaves, and merge them pairwise in parallel. (The slabs set disjoint
+        // voxels, so the result doesn't depend on the split.)
+        const SLAB: i32 = 32;
+        let start = imin & !(SLAB - 1);
+        let chunks: Vec<(i32, i32)> =
+            (start..imax).step_by(SLAB as usize).map(|i0| (i0.max(imin), (i0 + SLAB).min(imax))).collect();
+        let merged = chunks
+            .par_iter()
+            .map(|&(a, b)| kernel(a, b))
+            .reduce_with(|mut a, mut b| {
+                merge(&mut a, &mut b, MergePolicy::ActiveStates);
+                a
+            });
+        if let Some(mut p) = merged {
             merge(tree, &mut p, MergePolicy::ActiveStates);
         }
     } else {

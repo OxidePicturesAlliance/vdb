@@ -13,6 +13,7 @@ use crate::math::{Coord, CoordBBox};
 use crate::tools::value_traits::ToolValue;
 use crate::tree::{Internal1, Internal2, InternalNode, LeafNode, Node, RootEntry, Tree, TreeBase};
 use crate::types::Value;
+use rayon::prelude::*;
 use std::collections::BTreeSet;
 
 /// How [`merge`] combines the nodes of two trees (OpenVDB's `MergePolicy`).
@@ -158,9 +159,13 @@ impl<T: ToolValue, C: NodeOps<T>, const L: u32> NodeOps<T> for InternalNode<C, L
     fn reset_background_cpp(&mut self, old: &T, new: &T) {
         let neg_old = old.negative();
         let neg_new = new.negative();
+        let children: Vec<&mut C> = self.children_mut().collect();
+        children.into_par_iter().with_min_len(if C::LEVEL == 0 { 64 } else { 1 }).for_each(|c| {
+            c.reset_background_cpp(old, new);
+        });
         for n in 0..Self::NUM_VALUES {
-            if let Some(c) = self.child_mut(n) {
-                c.reset_background_cpp(old, new);
+            if self.is_child(n) {
+                continue;
             } else if !self.value_mask().is_on(n) {
                 let v = self.values()[n];
                 if v.is_approx_equal(old) {
