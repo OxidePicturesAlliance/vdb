@@ -79,7 +79,55 @@ reads every file the Rust writer produces.
 
 `benches/compare.sh` runs the same operations with this crate and with C++ OpenVDB 10 and
 prints a comparison table; see [`benches/README.md`](benches/README.md) for the benchmark list
-and current results.
+and the full results.
+
+Across the 33 benchmarks, this crate is now faster than C++ OpenVDB 10 overall: the geometric
+mean of Rust time ÷ C++ time is **0.88× on one thread** and **0.94× on 4 threads** (it was
+1.14× and 1.42× before the performance pass). Every benchmark's result check (voxel counts,
+value sums, mesh sizes, ray hits, point counts) matches C++; only the sizes of written files
+differ slightly, because the compressors are different implementations.
+
+Selected rows (ratios below 1 mean Rust is faster):
+
+| benchmark | 4 threads: before → now | 1 thread: before → now |
+|---|---:|---:|
+| `particles_to_sdf` | 3.25× → 0.99× | 1.95× → 0.81× |
+| `point_index_grid` / `point_data_grid` | 2.6× / 3.1× → 0.91× / 0.94× | 2.1× / 2.0× → 0.72× / 0.99× |
+| `grid_copy` | 3.90× → 0.66× | 1.91× → 1.12× |
+| `csg_union` / `csg_difference` | 2.76× / 2.65× → 0.78× / 1.00× | 1.52× / 1.16× → 1.03× / 0.93× |
+| `filter_gaussian` | 1.60× → 1.00× | 1.81× → 1.00× |
+| `ls_filter_mean_curvature` | 1.41× → 1.00× | 1.52× → 1.00× |
+| `gradient` / `laplacian` / `mean_curvature` | 0.83–1.27× → 0.58–0.91× | 0.87–1.06× → 0.52–0.61× |
+
+What made the difference:
+
+- **Tree core:** small node masks (including every leaf's) are stored inline instead of in a
+  separate allocation; tree copies and voxel counts run in parallel; lookups test the child
+  mask first, so each tree level costs one memory read.
+- **Accessors and stencils:** an accessor finds a voxel's leaf or tile in one descent and
+  caches the last tile; stencils, grid operators and box samplers read neighbors inside the
+  same leaf straight from its buffer.
+- **Rounding:** `Coord::floor`/`round`/`ceil` no longer call libm's `floor`/`ceil`, which the
+  baseline x86-64 target cannot inline.
+- **Parallelism:** particle rasterization, CSG, sphere creation, mesh voxelization and
+  volume-to-mesh combine their per-thread results in parallel. Where the work split changed,
+  the output was checked to be identical to the sequential result (particle rasterization
+  has a test comparing parallel and single-threaded output exactly).
+- **Algorithms:** point partitioning uses a stable counting sort instead of a comparison sort.
+
+Still slower than C++:
+
+- `coherent_read` (about 1.8–2×).
+- Random-access reads: `random_read`, `box_sample` and `ray_intersect` (1.2–1.5×), which are
+  limited by memory latency. Storing each internal-node slot as a single child-or-value
+  entry, as C++ does, would likely help, but is a larger refactor.
+- Meshing and `mesh_to_level_set` on 4 threads (1.1–1.25×), and `sphere_create`,
+  `signed_flood_fill` and adaptive meshing on one thread (1.1–1.5×).
+
+The numbers come from a shared 4-vCPU cloud VM, where single rows move by 10–20% between
+runs; the geometric means are more reliable. Benchmarks run on their own (with a name filter)
+are also slower than in a full run, because their memory comes fresh from the operating
+system, so compare full runs of `benches/compare.sh`.
 
 ## License
 
