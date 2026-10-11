@@ -6,12 +6,12 @@
 
 use super::level_set_dilated_mesh::*;
 use super::level_set_tubes::*;
-use super::mesh_support::signed_flood_fill_with_values;
 use super::mesh_to_volume::*;
 use super::particles_to_level_set::*;
 use super::point_index_grid::*;
 use super::point_scatter::*;
 use super::points_to_mask::create_point_mask;
+use super::signed_flood_fill::signed_flood_fill_with_values;
 use super::volume_to_mesh::*;
 use super::volume_to_spheres::*;
 use crate::grid::{Grid, GridClass};
@@ -49,7 +49,7 @@ pub(crate) fn level_set_sphere(radius: f32, center: Vec3f, dx: f32, w: f32) -> G
         }
     }
     let bg = dx * w;
-    signed_flood_fill_with_values(g.tree_mut(), bg, -bg);
+    signed_flood_fill_with_values(g.tree_mut(), bg, -bg, true).unwrap();
     g.set_grid_class(GridClass::LevelSet);
     g
 }

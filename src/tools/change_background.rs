@@ -104,9 +104,15 @@ pub fn change_asymmetric_level_set_background<T: ToolValue>(
     if !inside.is_negative() {
         return Err(ToolError::Value("ChangeLevelSetBackgroundOp: the inside value must be negative!".into()));
     }
+    set_level_set_background(tree, outside, inside, threaded);
+    Ok(())
+}
+
+/// [`change_asymmetric_level_set_background`] without the sign checks on `outside` and
+/// `inside`, for callers that have already validated them (or deliberately shrink a band).
+pub(crate) fn set_level_set_background<T: ToolValue>(tree: &mut Tree<T>, outside: T, inside: T, threaded: bool) {
     apply_to_values(tree, threaded, |v| *v = if v.is_negative() { inside } else { outside }, true);
     tree.root_mut().set_background_unchecked(outside);
-    Ok(())
 }
 
 #[cfg(test)]

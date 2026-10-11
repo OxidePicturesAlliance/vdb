@@ -215,8 +215,8 @@ fn measures() {
     let mut m = LevelSetMeasure::new(&s).unwrap();
     assert!(close(m.area(true), 12.566670284, 1e-9));
     assert!(close(m.volume(true), 4.19482098767, 1e-9));
-    assert!(close(m.total_mean_curvature(true), 12.5571902482, 1e-6));
-    assert!(close(m.total_gaussian_curvature(true), 12.5569212852, 1e-6));
+    assert!(close(m.total_mean_curvature(true), 12.5571902482, 1e-9));
+    assert!(close(m.total_gaussian_curvature(true), 12.5569212852, 1e-9));
     assert_eq!((m.euler_characteristic(), m.genus()), (2, 0));
 }
 

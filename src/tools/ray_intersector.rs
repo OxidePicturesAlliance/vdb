@@ -1,5 +1,6 @@
 //! Ray intersection with level sets and generic volumes (port of
-//! `openvdb/tools/RayIntersector.h`, with the parts of `math/Ray.h` and `math/DDA.h` it needs).
+//! `openvdb/tools/RayIntersector.h`, together with the hierarchical tree walkers
+//! `LevelSetHDDA` and `VolumeHDDA` of `openvdb/math/DDA.h`).
 //!
 //! * [`LevelSetRayIntersector`] finds the first zero crossing of a narrow-band level set along a
 //!   ray, using a hierarchical DDA over the tree's nodes followed by a linear search with
@@ -7,8 +8,7 @@
 //! * [`VolumeRayIntersector`] marches a ray through the active topology of any grid and
 //!   returns the time spans during which the ray is inside active values.
 //!
-//! [`Ray`] and [`Dda`] are minimal ports of `math::Ray<double>` and `math::DDA`, kept in this
-//! module until the full math versions are available.
+//! Rays, time spans and the voxel-level DDA are those of [`crate::math::ray`].
 
 use crate::grid::{Grid, GridClass};
 use crate::math::stencils::BoxStencil;
@@ -16,305 +16,10 @@ use crate::math::{Coord, CoordBBox, Transform, Vec3d};
 use crate::tree::{Internal2, Tree, ValueAccessor};
 use crate::types::{RealValue, Value};
 
+pub use crate::math::ray::{Dda, Ray, TimeSpan};
+
 /// `math::Delta<double>`.
-const DELTA_D: f64 = 1e-9;
-/// `math::Delta<float>`, the default epsilon of `Ray::valid`.
-const DELTA_F: f64 = 1e-5;
-
-/// An interval of ray parameters (`Ray::TimeSpan`).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TimeSpan {
-    /// Start time.
-    pub t0: f64,
-    /// End time.
-    pub t1: f64,
-}
-
-impl TimeSpan {
-    /// A span from `t0` to `t1`.
-    pub fn new(t0: f64, t1: f64) -> Self {
-        TimeSpan { t0, t1 }
-    }
-    /// True if the span is longer than `math::Delta<double>`.
-    pub fn valid(&self) -> bool {
-        self.valid_eps(DELTA_D)
-    }
-    /// True if the span is longer than `eps`.
-    pub fn valid_eps(&self, eps: f64) -> bool {
-        (self.t1 - self.t0) > eps
-    }
-    /// The mid-point.
-    pub fn mid(&self) -> f64 {
-        0.5 * (self.t0 + self.t1)
-    }
-    /// True if `t` lies in the span.
-    pub fn test(&self, t: f64) -> bool {
-        t >= self.t0 && t <= self.t1
-    }
-}
-
-/// A ray `eye + t * dir` with `t` restricted to `[t0, t1]` (`math::Ray<double>`).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Ray {
-    eye: Vec3d,
-    dir: Vec3d,
-    inv_dir: Vec3d,
-    span: TimeSpan,
-}
-
-impl Default for Ray {
-    fn default() -> Self {
-        Ray::new(Vec3d::zero(), Vec3d::new(1.0, 0.0, 0.0))
-    }
-}
-
-impl Ray {
-    /// A ray from `eye` along `dir` with the default time span `[Delta, f64::MAX]`.
-    pub fn new(eye: Vec3d, dir: Vec3d) -> Self {
-        Self::with_times(eye, dir, DELTA_D, f64::MAX)
-    }
-    /// A ray with an explicit time span.
-    pub fn with_times(eye: Vec3d, dir: Vec3d, t0: f64, t1: f64) -> Self {
-        Ray { eye, dir, inv_dir: dir.map(|d| 1.0 / d), span: TimeSpan::new(t0, t1) }
-    }
-    /// The origin.
-    pub fn eye(&self) -> Vec3d {
-        self.eye
-    }
-    /// The direction.
-    pub fn dir(&self) -> Vec3d {
-        self.dir
-    }
-    /// The component-wise inverse of the direction.
-    pub fn inv_dir(&self) -> Vec3d {
-        self.inv_dir
-    }
-    /// The start time.
-    pub fn t0(&self) -> f64 {
-        self.span.t0
-    }
-    /// The end time.
-    pub fn t1(&self) -> f64 {
-        self.span.t1
-    }
-    /// The time span.
-    pub fn span(&self) -> TimeSpan {
-        self.span
-    }
-    /// Set the origin.
-    pub fn set_eye(&mut self, eye: Vec3d) {
-        self.eye = eye;
-    }
-    /// Set the direction.
-    pub fn set_dir(&mut self, dir: Vec3d) {
-        self.dir = dir;
-        self.inv_dir = dir.map(|d| 1.0 / d);
-    }
-    /// Set the time span.
-    pub fn set_times(&mut self, t0: f64, t1: f64) {
-        self.span = TimeSpan::new(t0, t1);
-    }
-    /// Set the start time.
-    pub fn set_min_time(&mut self, t0: f64) {
-        self.span.t0 = t0;
-    }
-    /// Set the end time.
-    pub fn set_max_time(&mut self, t1: f64) {
-        self.span.t1 = t1;
-    }
-    /// The point at parameter `t`.
-    #[inline]
-    pub fn at(&self, t: f64) -> Vec3d {
-        self.eye + self.dir * t
-    }
-    /// The point at the start time.
-    pub fn start(&self) -> Vec3d {
-        self.at(self.span.t0)
-    }
-    /// The point at the end time.
-    pub fn end(&self) -> Vec3d {
-        self.at(self.span.t1)
-    }
-    /// True if the span is longer than `math::Delta<float>`.
-    pub fn valid(&self) -> bool {
-        self.span.valid_eps(DELTA_F)
-    }
-    /// True if `t` lies in the time span.
-    pub fn test(&self, t: f64) -> bool {
-        self.span.test(t)
-    }
-    /// Transform a world-space ray (with unit direction) to the index space of `xform`; the
-    /// time span is rescaled so that it covers the same points.
-    pub fn world_to_index(&self, xform: &Transform) -> Ray {
-        let eye = xform.world_to_index(self.eye);
-        let dir = xform.world_to_index(self.eye + self.dir) - eye;
-        let len = dir.length();
-        Ray::with_times(eye, dir / len, len * self.span.t0, len * self.span.t1)
-    }
-    /// Transform an index-space ray (with unit direction) to world space.
-    pub fn index_to_world(&self, xform: &Transform) -> Ray {
-        let eye = xform.index_to_world(self.eye);
-        let dir = xform.index_to_world(self.eye + self.dir) - eye;
-        let len = dir.length();
-        Ray::with_times(eye, dir / len, len * self.span.t0, len * self.span.t1)
-    }
-    /// Intersect with a sphere: returns the clipped entry and exit times.
-    pub fn intersects_sphere(&self, center: Vec3d, radius: f64) -> Option<(f64, f64)> {
-        let origin = self.eye - center;
-        let a = self.dir.length_sqr();
-        let b = 2.0 * self.dir.dot(&origin);
-        let c = origin.length_sqr() - radius * radius;
-        let d = b * b - 4.0 * a * c;
-        if d < 0.0 {
-            return None;
-        }
-        let q = -0.5 * if b < 0.0 { b + d.sqrt() } else { b - d.sqrt() };
-        let (mut t0, mut t1) = (q / a, c / q);
-        if t0 > t1 {
-            std::mem::swap(&mut t0, &mut t1);
-        }
-        t0 = t0.max(self.span.t0);
-        t1 = t1.min(self.span.t1);
-        (t0 <= t1).then_some((t0, t1))
-    }
-    /// Intersect with an axis-aligned box given by its corners: returns the clipped entry and
-    /// exit times.
-    pub fn intersects_box(&self, min: Vec3d, max: Vec3d) -> Option<(f64, f64)> {
-        let (mut t0, mut t1) = (self.span.t0, self.span.t1);
-        for i in 0..3 {
-            let mut a = (min[i] - self.eye[i]) * self.inv_dir[i];
-            let mut b = (max[i] - self.eye[i]) * self.inv_dir[i];
-            if a > b {
-                std::mem::swap(&mut a, &mut b);
-            }
-            if a > t0 {
-                t0 = a;
-            }
-            if b < t1 {
-                t1 = b;
-            }
-            if t0 > t1 {
-                return None;
-            }
-        }
-        Some((t0, t1))
-    }
-    /// Intersect with an index-space bounding box.
-    pub fn intersects_bbox(&self, bbox: &CoordBBox) -> Option<(f64, f64)> {
-        self.intersects_box(bbox.min.as_vec3d(), bbox.max.as_vec3d())
-    }
-    /// Clip the time span to `bbox`; returns false (leaving the ray unchanged) on a miss.
-    pub fn clip_bbox(&mut self, bbox: &CoordBBox) -> bool {
-        match self.intersects_bbox(bbox) {
-            Some((t0, t1)) => {
-                self.span = TimeSpan::new(t0, t1);
-                true
-            }
-            None => false,
-        }
-    }
-    /// Clip the time span to a sphere; returns false on a miss.
-    pub fn clip_sphere(&mut self, center: Vec3d, radius: f64) -> bool {
-        match self.intersects_sphere(center, radius) {
-            Some((t0, t1)) => {
-                self.span = TimeSpan::new(t0, t1);
-                true
-            }
-            None => false,
-        }
-    }
-    /// Intersect with the plane `{x : x·normal = distance}`.
-    pub fn intersects_plane(&self, normal: Vec3d, distance: f64) -> Option<f64> {
-        let cos = self.dir.dot(&normal);
-        if cos.abs() <= DELTA_D {
-            return None;
-        }
-        let t = (distance - self.eye.dot(&normal)) / cos;
-        self.test(t).then_some(t)
-    }
-}
-
-/// A 3D digital differential analyzer stepping through the cells of size `2^log2dim` pierced by
-/// a ray (`math::DDA`).
-#[derive(Clone, Copy, Debug)]
-pub struct Dda {
-    t0: f64,
-    t1: f64,
-    voxel: Coord,
-    step: Coord,
-    delta: Vec3d,
-    next: Vec3d,
-}
-
-impl Dda {
-    /// Start at the ray's start time and stop at its end time.
-    pub fn new(ray: &Ray, log2dim: u32) -> Self {
-        Self::with_times(ray, log2dim, ray.t0(), ray.t1())
-    }
-    /// Start at `start` and stop at `max_time`.
-    pub fn with_times(ray: &Ray, log2dim: u32, start: f64, max_time: f64) -> Self {
-        let dim = 1i32 << log2dim;
-        let pos = ray.at(start);
-        let (dir, inv) = (ray.dir(), ray.inv_dir());
-        let voxel = Coord::floor(pos) & !(dim - 1);
-        let mut d =
-            Dda { t0: start, t1: max_time, voxel, step: Coord::origin(), delta: Vec3d::zero(), next: Vec3d::zero() };
-        for axis in 0..3 {
-            if dir[axis] == 0.0 {
-                d.step[axis] = 0;
-                d.next[axis] = f64::MAX;
-                d.delta[axis] = f64::MAX;
-            } else if inv[axis] > 0.0 {
-                d.step[axis] = dim;
-                d.next[axis] = start + (voxel[axis] as f64 + dim as f64 - pos[axis]) * inv[axis];
-                d.delta[axis] = dim as f64 * inv[axis];
-            } else {
-                d.step[axis] = -dim;
-                d.next[axis] = start + (voxel[axis] as f64 - pos[axis]) * inv[axis];
-                d.delta[axis] = -dim as f64 * inv[axis];
-            }
-        }
-        d
-    }
-    /// Step to the next cell; returns false once past the end time.
-    #[inline]
-    pub fn step(&mut self) -> bool {
-        let a = self.next.min_index();
-        self.t0 = self.next[a];
-        self.next[a] += self.delta[a];
-        self.voxel[a] += self.step[a];
-        self.t0 <= self.t1
-    }
-    /// The current cell (its minimum corner).
-    #[inline]
-    pub fn voxel(&self) -> Coord {
-        self.voxel
-    }
-    /// The time at which the ray entered the current cell.
-    #[inline]
-    pub fn time(&self) -> f64 {
-        self.t0
-    }
-    /// The end time.
-    #[inline]
-    pub fn max_time(&self) -> f64 {
-        self.t1
-    }
-    /// The time at which the ray leaves the current cell (clamped to the end time).
-    #[inline]
-    pub fn next(&self) -> f64 {
-        self.t1.min(self.next[0]).min(self.next[1]).min(self.next[2])
-    }
-}
-
-/// log2 of the extent of the nodes at `level` in the standard tree (leaf = 0).
-const fn node_total(level: i32) -> u32 {
-    match level {
-        0 => 3,
-        1 => 7,
-        _ => 12,
-    }
-}
+const DELTA_D: f64 = crate::math::DELTA_F64;
 
 /// True if a node of the given level (0 = leaf, 1, 2) exists at `ijk`.
 #[inline]
@@ -348,7 +53,7 @@ pub enum RayIntersectorError {
 }
 
 fn check_uniform<T: Value>(grid: &Grid<T>) -> Result<(), RayIntersectorError> {
-    super::internal::uniform_voxel_size(grid).map(|_| ()).ok_or(RayIntersectorError::NonUniformVoxels)
+    grid.uniform_voxel_size().map(|_| ()).ok_or(RayIntersectorError::NonUniformVoxels)
 }
 
 /// Linear search for the zero crossing of the trilinearly interpolated level set along an
@@ -404,21 +109,34 @@ impl<'a, T: RealValue> LinearSearch<'a, T> {
         false
     }
 
-    /// Hierarchical DDA (`math::LevelSetHDDA<TreeT, level>::test`).
+    /// Hierarchical DDA (`math::LevelSetHDDA<TreeT, level>::test`): `level` 2 and 1 walk the
+    /// internal nodes, 0 the leaves and -1 the voxels.
     fn hdda(&mut self, tree: &Tree<T>, level: i32) -> bool {
-        if level < 0 {
-            let mut dda = Dda::new(&self.ray, 0);
-            self.init(dda.time());
-            loop {
-                if self.test(&dda.voxel(), dda.next()) {
-                    return true;
-                }
-                if !dda.step() {
-                    return false;
-                }
+        match level {
+            2 => self.hdda_nodes::<12>(tree, 2),
+            1 => self.hdda_nodes::<7>(tree, 1),
+            0 => self.hdda_nodes::<3>(tree, 0),
+            _ => self.hdda_voxels(),
+        }
+    }
+
+    /// `LevelSetHDDA<TreeT, -1>::test`: the linear search over voxels.
+    fn hdda_voxels(&mut self) -> bool {
+        let mut dda = Dda::<f64, 0>::new(&self.ray);
+        self.init(dda.time());
+        loop {
+            if self.test(&dda.voxel(), dda.next()) {
+                return true;
+            }
+            if !dda.step() {
+                return false;
             }
         }
-        let mut dda = Dda::new(&self.ray, node_total(level));
+    }
+
+    /// `LevelSetHDDA<TreeT, level>::test` for the nodes of extent `2^LOG2` at `level`.
+    fn hdda_nodes<const LOG2: u32>(&mut self, tree: &Tree<T>, level: i32) -> bool {
+        let mut dda = Dda::<f64, LOG2>::new(&self.ray);
         loop {
             if has_node(tree, level, &dda.voxel()) {
                 self.ray.set_times(dda.time(), dda.next());
@@ -490,7 +208,7 @@ impl<'a, T: RealValue> LevelSetRayIntersector<'a, T> {
 
     fn search(&mut self, iray: Ray) -> Option<(Ray, f64)> {
         let mut ray = iray;
-        if !ray.clip_bbox(&self.bbox) {
+        if !ray.clip_coord_bbox(&self.bbox) {
             return None;
         }
         let dx2 = T::from_f64(2.0 * self.grid.voxel_size()[0]);
@@ -564,8 +282,14 @@ impl<'a, T: Value> VolumeRayIntersector<'a, T> {
         if grid.empty() {
             return Err(RayIntersectorError::EmptyGrid);
         }
-        let mut tree = super::internal::topology_copy(grid.tree(), false);
-        super::internal::dilate_face(&mut tree, dilation);
+        let mut tree: Tree<bool> = crate::tools::tree_ops::topology_copy(grid.tree(), false);
+        crate::tools::morphology::dilate_active_values(
+            &mut tree,
+            dilation as i32,
+            crate::tools::morphology::NearestNeighbors::Face,
+            crate::tools::morphology::TilePolicy::IgnoreTiles,
+            true,
+        );
         let mut bbox = CoordBBox::empty();
         tree.root().eval_active_bbox(&mut bbox, false);
         bbox.max = bbox.max.offset(1);
@@ -578,7 +302,7 @@ impl<'a, T: Value> VolumeRayIntersector<'a, T> {
     /// Start marching along an index-space ray; returns false if it misses the bounding box.
     pub fn set_index_ray(&mut self, iray: &Ray) -> bool {
         self.ray = *iray;
-        let hit = self.ray.clip_bbox(&self.bbox);
+        let hit = self.ray.clip_coord_bbox(&self.bbox);
         if hit {
             self.tmax = self.ray.t1();
         }
@@ -592,21 +316,21 @@ impl<'a, T: Value> VolumeRayIntersector<'a, T> {
     /// once the ray has left the volume.
     pub fn march(&mut self) -> Option<TimeSpan> {
         let mut t = TimeSpan::new(-1.0, -1.0);
-        if self.ray.valid() {
+        if self.ray.is_valid() {
             let tree = &self.tree;
             vhdda_march(tree, &mut self.ray, &mut t, 2);
         }
         if t.t1 > 0.0 {
             self.ray.set_times(t.t1 + DELTA_D, self.tmax);
         }
-        t.valid().then_some(t)
+        t.is_valid().then_some(t)
     }
     /// All remaining time spans along the ray (`hits`).
     pub fn hits(&mut self) -> Vec<TimeSpan> {
         let mut out = Vec::new();
         let mut t = TimeSpan::new(-1.0, -1.0);
         vhdda_hits(&self.tree, &mut self.ray, &mut out, &mut t, 2);
-        if t.valid() {
+        if t.is_valid() {
             out.push(t);
         }
         out
@@ -645,10 +369,18 @@ fn vhdda_cell(tree: &Tree<bool>, acc: &ValueAccessor<'_, Internal2<bool>>, level
     }
 }
 
-/// `math::VolumeHDDA::march`.
-fn vhdda_march(tree: &Tree<bool>, ray: &mut Ray, t: &mut TimeSpan, level: i32) -> bool {
+/// `math::VolumeHDDA<TreeT, RayT, level>::march`, dispatching on the node level (2, 1 or 0).
+fn vhdda_march(tree: &Tree<bool>, ray: &mut Ray, t: &mut TimeSpan<f64>, level: i32) -> bool {
+    match level {
+        2 => vhdda_march_at::<12>(tree, ray, t, 2),
+        1 => vhdda_march_at::<7>(tree, ray, t, 1),
+        _ => vhdda_march_at::<3>(tree, ray, t, 0),
+    }
+}
+
+fn vhdda_march_at<const LOG2: u32>(tree: &Tree<bool>, ray: &mut Ray, t: &mut TimeSpan<f64>, level: i32) -> bool {
     let acc = tree.accessor();
-    let mut dda = Dda::new(ray, node_total(level));
+    let mut dda = Dda::<f64, LOG2>::new(ray);
     loop {
         let (child, active) = vhdda_cell(tree, &acc, level, &dda.voxel());
         if child {
@@ -662,7 +394,7 @@ fn vhdda_march(tree: &Tree<bool>, ray: &mut Ray, t: &mut TimeSpan, level: i32) -
             }
         } else if t.t0 >= 0.0 {
             t.t1 = dda.time();
-            if t.valid() {
+            if t.is_valid() {
                 return true;
             }
             *t = TimeSpan::new(-1.0, -1.0);
@@ -677,10 +409,24 @@ fn vhdda_march(tree: &Tree<bool>, ray: &mut Ray, t: &mut TimeSpan, level: i32) -
     false
 }
 
-/// `math::VolumeHDDA::hits`.
-fn vhdda_hits(tree: &Tree<bool>, ray: &mut Ray, out: &mut Vec<TimeSpan>, t: &mut TimeSpan, level: i32) {
+/// `math::VolumeHDDA<TreeT, RayT, level>::hits`, dispatching on the node level (2, 1 or 0).
+fn vhdda_hits(tree: &Tree<bool>, ray: &mut Ray, out: &mut Vec<TimeSpan<f64>>, t: &mut TimeSpan<f64>, level: i32) {
+    match level {
+        2 => vhdda_hits_at::<12>(tree, ray, out, t, 2),
+        1 => vhdda_hits_at::<7>(tree, ray, out, t, 1),
+        _ => vhdda_hits_at::<3>(tree, ray, out, t, 0),
+    }
+}
+
+fn vhdda_hits_at<const LOG2: u32>(
+    tree: &Tree<bool>,
+    ray: &mut Ray,
+    out: &mut Vec<TimeSpan<f64>>,
+    t: &mut TimeSpan<f64>,
+    level: i32,
+) {
     let acc = tree.accessor();
-    let mut dda = Dda::new(ray, node_total(level));
+    let mut dda = Dda::<f64, LOG2>::new(ray);
     loop {
         let (child, active) = vhdda_cell(tree, &acc, level, &dda.voxel());
         if child {
@@ -692,7 +438,7 @@ fn vhdda_hits(tree: &Tree<bool>, ray: &mut Ray, out: &mut Vec<TimeSpan>, t: &mut
             }
         } else if t.t0 >= 0.0 {
             t.t1 = dda.time();
-            if t.valid() {
+            if t.is_valid() {
                 out.push(*t);
             }
             *t = TimeSpan::new(-1.0, -1.0);
@@ -714,10 +460,10 @@ mod tests {
     #[test]
     fn ray_basics() {
         let r = Ray::new(Vec3d::new(-5.0, 0.0, 0.0), Vec3d::new(1.0, 0.0, 0.0));
-        let (t0, t1) = r.intersects_sphere(Vec3d::zero(), 1.0).unwrap();
+        let (t0, t1) = r.intersects_sphere_times(Vec3d::zero(), 1.0).unwrap();
         assert_close(t0, 4.0, 1e-12);
         assert_close(t1, 6.0, 1e-12);
-        let (b0, b1) = r.intersects_box(Vec3d::splat(-2.0), Vec3d::splat(2.0)).unwrap();
+        let (b0, b1) = r.intersects_box_times(Vec3d::splat(-2.0), Vec3d::splat(2.0)).unwrap();
         assert_close(b0, 3.0, 1e-12);
         assert_close(b1, 7.0, 1e-12);
         assert_eq!(r.intersects_plane(Vec3d::new(1.0, 0.0, 0.0), 2.0), Some(7.0));
@@ -727,7 +473,7 @@ mod tests {
         assert!((ir.eye() - Vec3d::new(-10.0, 0.0, 0.0)).length() < 1e-12);
         // DDA visits consecutive voxels.
         let ray = Ray::with_times(Vec3d::new(0.5, 0.5, 0.5), Vec3d::new(1.0, 0.0, 0.0), 0.0, 3.0);
-        let mut dda = Dda::new(&ray, 0);
+        let mut dda = Dda::<f64, 0>::new(&ray);
         let mut seen = vec![dda.voxel()];
         while dda.step() {
             seen.push(dda.voxel());

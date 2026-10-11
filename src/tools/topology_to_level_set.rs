@@ -1,119 +1,49 @@
 //! Convert the active topology of any grid into a narrow-band level set (port of
 //! `openvdb/tools/TopologyToLevelSet.h`).
 //!
-//! The PDE-based renormalization (`LevelSetFilter::normalize` with first-order upwinding
-//! and forward-Euler time integration), the trimming of the narrow band and the box
-//! filter used for optional smoothing are implemented privately in this module, following
-//! `LevelSetTracker.h` and `LevelSetFilter.h`.
+//! Renormalization and smoothing use [`LevelSetTracker`] and [`LevelSetFilter`] with the
+//! first-order upwind scheme, exactly like OpenVDB.
 
 use crate::grid::{Grid, GridClass};
-use crate::tools::level_set_measure::first_bias_norm_sq_grad;
+use crate::math::finite_difference::BiasedGradientScheme;
+use crate::tools::level_set_filter::LevelSetFilter;
+use crate::tools::level_set_tracker::LevelSetTracker;
 use crate::tools::morphology::{dilate_active_values, erode_active_values, NearestNeighbors, TilePolicy};
 use crate::tools::prune::{level_set_prune, prune_inactive};
 use crate::tools::tree_ops::{topology_copy, topology_copy_with_values, topology_difference};
 use crate::tools::value_traits::{ToolError, ToolResult};
 use crate::tree::{LeafNode, Node, Tree};
 use crate::types::Value;
-use rayon::prelude::*;
 
-/// One forward-Euler renormalization step of all active voxels (`Normalizer::euler01`
-/// with `FIRST_BIAS`).
-fn normalize_step(tree: &mut Tree<f32>, dx: f32) {
-    let dt = dx * 0.3;
-    let inv_dx = 1.0 / dx;
-    let results: Vec<Vec<f32>> = {
-        let t = &*tree;
-        t.leaf_refs()
-            .par_iter()
-            .map(|leaf| {
-                let acc = t.accessor();
-                let mut out = leaf.buffer().to_vec();
-                for (pos, phi0) in leaf.iter_on() {
-                    let ijk = leaf.offset_to_global_coord(pos);
-                    let phi0 = *phi0;
-                    let nsg = first_bias_norm_sq_grad(&acc, &ijk, phi0);
-                    let mut v = phi0 / ((phi0 * phi0 + nsg).sqrt() + crate::math::TOLERANCE_F32);
-                    v = phi0 - dt * v * (nsg.sqrt() * inv_dx - 1.0);
-                    out[pos] = v;
-                }
-                out
-            })
-            .collect()
-    };
-    for (leaf, r) in tree.leaves_mut().zip(results) {
-        leaf.buffer_mut().copy_from_slice(&r);
-    }
+fn tracker_error(e: crate::tools::level_set_tracker::LevelSetError) -> ToolError {
+    ToolError::Value(e.to_string())
 }
 
-/// `LevelSetTracker::prune`: deactivate voxels outside the band and prune the tree.
-fn trim_and_prune(tree: &mut Tree<f32>) {
-    let gamma = *tree.background();
-    tree.par_for_each_leaf_mut(|leaf: &mut LeafNode<f32>| {
-        for pos in 0..LeafNode::<f32>::SIZE {
-            if !leaf.is_value_on_at(pos) {
-                continue;
-            }
-            let v = *leaf.get_value_at(pos);
-            if v <= -gamma {
-                leaf.set_value_off_at(pos, -gamma);
-            } else if v >= gamma {
-                leaf.set_value_off_at(pos, gamma);
-            }
+/// `ttls_internal::normalizeLevelSet`: `norm_count` first-order renormalization steps, then
+/// trimming and pruning of the narrow band.
+fn normalize_level_set(grid: &mut Grid<f32>, norm_count: i32) -> ToolResult<()> {
+    let mut tracker = LevelSetTracker::new(grid).map_err(tracker_error)?;
+    tracker.set_spatial_scheme(BiasedGradientScheme::FirstBias);
+    tracker.set_norm_count(norm_count.max(0) as usize);
+    tracker.normalize();
+    tracker.prune();
+    Ok(())
+}
+
+/// `ttls_internal::smoothLevelSet`: `iterations` mean-value filter passes on a copy, which is
+/// then offset by half a voxel and min-combined with the original before renormalization.
+fn smooth_level_set(grid: &mut Grid<f32>, iterations: i32, half_width: i32) -> ToolResult<()> {
+    let mut filtered = grid.clone();
+    {
+        let mut filter = LevelSetFilter::new(&mut filtered).map_err(tracker_error)?;
+        filter.set_spatial_scheme(BiasedGradientScheme::FirstBias);
+        for _ in 0..iterations {
+            filter.mean(1);
         }
-    });
-    level_set_prune(tree, gamma, -gamma, true);
-}
-
-/// `ttls_internal::normalizeLevelSet`.
-fn normalize_level_set(tree: &mut Tree<f32>, dx: f32, norm_count: i32) {
-    for _ in 0..norm_count {
-        normalize_step(tree, dx);
     }
-    trim_and_prune(tree);
-}
-
-/// One pass of a 3-tap box filter along `axis` over the active voxels (`Filter::Avg`).
-fn box_pass(tree: &mut Tree<f32>, axis: usize) {
-    let results: Vec<Vec<f32>> = {
-        let t = &*tree;
-        t.leaf_refs()
-            .par_iter()
-            .map(|leaf| {
-                let acc = t.accessor();
-                let mut out = leaf.buffer().to_vec();
-                for (pos, _) in leaf.iter_on() {
-                    let mut ijk = leaf.offset_to_global_coord(pos);
-                    let mut sum = 0.0f32;
-                    let c = ijk[axis];
-                    for i in c - 1..=c + 1 {
-                        ijk[axis] = i;
-                        sum += acc.get_value(&ijk);
-                    }
-                    out[pos] = sum * (1.0 / 3.0);
-                }
-                out
-            })
-            .collect()
-    };
-    for (leaf, r) in tree.leaves_mut().zip(results) {
-        leaf.buffer_mut().copy_from_slice(&r);
-    }
-}
-
-/// `ttls_internal::smoothLevelSet`.
-fn smooth_level_set(tree: &mut Tree<f32>, dx: f32, iterations: i32, half_width: i32) {
-    let mut filtered = tree.clone();
-    for _ in 0..iterations {
-        // LevelSetFilter::mean(1): box filter (axes in OpenVDB's order) then track().
-        box_pass(&mut filtered, 0);
-        box_pass(&mut filtered, 2);
-        box_pass(&mut filtered, 1);
-        dilate_active_values(&mut filtered, 1, NearestNeighbors::Face, TilePolicy::IgnoreTiles, true);
-        normalize_level_set(&mut filtered, dx, crate::tools::level_set_sphere::LEVEL_SET_HALF_WIDTH as i32);
-    }
-    let offset = -(0.5 * dx);
-    let f = &filtered;
-    tree.par_for_each_leaf_mut(|leaf: &mut LeafNode<f32>| {
+    let offset = -(0.5 * grid.voxel_size()[0] as f32);
+    let f: &Tree<f32> = filtered.tree();
+    grid.tree_mut().par_for_each_leaf_mut(|leaf: &mut LeafNode<f32>| {
         if let Some(r) = f.probe_leaf(&leaf.origin()) {
             let (buf, mask) = leaf.buffer_and_mask_mut();
             for pos in mask.iter_on() {
@@ -121,7 +51,7 @@ fn smooth_level_set(tree: &mut Tree<f32>, dx: f32, iterations: i32, half_width: 
             }
         }
     });
-    normalize_level_set(tree, dx, half_width);
+    normalize_level_set(grid, half_width)
 }
 
 /// Return a narrow-band level set (with `half_width` voxels on each side) whose zero
@@ -164,12 +94,12 @@ pub fn topology_to_level_set<T: Value>(
     ls.voxelize_active_tiles();
     level_set_prune(&mut ls, background, -background, true);
 
-    normalize_level_set(&mut ls, dx, 3 * half_width);
-    if smoothing_steps > 0 {
-        smooth_level_set(&mut ls, dx, smoothing_steps, half_width);
-    }
     let mut out = Grid::from_tree(ls).with_transform(grid.transform().clone());
     out.set_grid_class(GridClass::LevelSet);
+    normalize_level_set(&mut out, 3 * half_width)?;
+    if smoothing_steps > 0 {
+        smooth_level_set(&mut out, smoothing_steps, half_width)?;
+    }
     Ok(out)
 }
 

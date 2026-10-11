@@ -1,22 +1,24 @@
 //! Fill a closed level set or fog volume with adaptively sized spheres, and find closest
 //! surface points (port of `openvdb/tools/VolumeToSpheres.h`).
 //!
-//! The private dependencies of the OpenVDB implementation (`sdfInteriorMask`, face-adjacent
-//! erosion with `IGNORE_TILES`, `levelSetRebuild` and the `boost::mt11213b` generator) are
-//! ported locally so the output matches OpenVDB's.
+//! Like OpenVDB, small inputs are first resampled with [`level_set_rebuild_asymmetric`], and
+//! candidate sphere centres are scattered (with the `boost::mt11213b` generator) in the
+//! eroded interior mask ([`sdf_interior_mask`]).
 
-use super::mesh_support::INVALID_IDX;
-use super::mesh_to_volume::{mesh_to_volume, QuadAndTriangleDataAdapter, DISABLE_RENORMALIZATION};
+use super::level_set_rebuild::level_set_rebuild_asymmetric;
+use super::level_set_tracker::LEVEL_SET_HALF_WIDTH;
+use super::level_set_util::sdf_interior_mask;
+use super::morphology::{erode_active_values, NearestNeighbors, TilePolicy};
 use super::point_scatter::{Mt11213b, UniformPointScatter};
+use super::prune::prune_inactive;
 use super::volume_to_mesh::{
     compute_auxiliary_data, compute_points_leaf, identify_surface_intersecting_voxels, leaf_point_count, MeshValue,
-    VolumeToMesh, EDGES, INSIDE,
+    EDGES, INSIDE,
 };
 use crate::grid::{Grid, GridClass};
-use crate::math::{Coord, Transform, Vec3d, Vec3f};
-use crate::tree::{LeafNode, Node, Tree};
+use crate::math::{Vec3d, Vec3f};
+use crate::tree::Tree;
 use crate::types::RealValue;
-use crate::util::NodeMask;
 use rayon::prelude::*;
 
 /// Finds the closest surface point (on the isosurface of a volume) for arbitrary query
@@ -243,126 +245,6 @@ impl ClosestSurfacePoint {
 // fillWithSpheres
 // ---------------------------------------------------------------------------------------
 
-/// `level_set_util_internal::computeInteriorMask`.
-fn sdf_interior_mask<T: RealValue>(grid: &Grid<T>, iso: T) -> Grid<bool> {
-    let tree = grid.tree();
-    let iso = iso.min(*tree.background() - T::tolerance());
-    let leaves: Vec<Option<Box<LeafNode<bool>>>> = tree
-        .leaf_refs()
-        .par_iter()
-        .map(|leaf| {
-            let mut m = LeafNode::<bool>::new(leaf.origin(), false, false);
-            for (i, v) in leaf.buffer().iter().enumerate() {
-                if *v < iso {
-                    m.set_value_on_at(i, true);
-                }
-            }
-            if m.on_voxel_count() > 0 {
-                Some(Box::new(m))
-            } else {
-                None
-            }
-        })
-        .collect();
-    let mut mask = Tree::<bool>::new(false);
-    for l in leaves.into_iter().flatten() {
-        mask.add_leaf(l);
-    }
-    let acc = tree.accessor();
-    for n2 in mask.root_mut().children_mut() {
-        for n1 in n2.children_mut() {
-            for slot in 0..4096 {
-                if !n1.is_child(slot) && acc.get_value(&n1.offset_to_global_coord(slot)) < iso {
-                    n1.set_tile(slot, true, true);
-                }
-            }
-        }
-        for slot in 0..32768 {
-            if !n2.is_child(slot) && acc.get_value(&n2.offset_to_global_coord(slot)) < iso {
-                n2.set_tile(slot, true, true);
-            }
-        }
-    }
-    Grid::from_tree(mask).with_transform(grid.transform().clone())
-}
-
-/// One iteration of face-adjacent erosion of the leaf voxels (tiles are ignored but count
-/// as active neighbours), as `erodeActiveValues(tree, 1, NN_FACE, IGNORE_TILES)`.
-fn erode_face_once(tree: &mut Tree<bool>) {
-    let new_masks: Vec<Option<NodeMask<3>>> = {
-        let t = &*tree;
-        t.leaf_refs()
-            .par_iter()
-            .map(|leaf| {
-                if leaf.value_mask().is_all_off() {
-                    return None;
-                }
-                let neighbour_on = |c: &Coord| -> bool {
-                    match t.probe_leaf(c) {
-                        Some(l) => l.is_value_on(c),
-                        None => t.is_value_on(c),
-                    }
-                };
-                let mut m = leaf.value_mask().clone();
-                for pos in leaf.value_mask().iter_on() {
-                    let local = LeafNode::<bool>::offset_to_local_coord(pos);
-                    let mut keep = true;
-                    for (axis, d) in [(0usize, -1i32), (0, 1), (1, -1), (1, 1), (2, -1), (2, 1)] {
-                        let mut n = local;
-                        n[axis] += d;
-                        let on = if (0..8).contains(&n[axis]) {
-                            leaf.value_mask().is_on(LeafNode::<bool>::coord_to_offset(&n))
-                        } else {
-                            neighbour_on(&(leaf.origin() + n))
-                        };
-                        if !on {
-                            keep = false;
-                            break;
-                        }
-                    }
-                    if !keep {
-                        m.set_off(pos);
-                    }
-                }
-                Some(m)
-            })
-            .collect()
-    };
-    for (leaf, m) in tree.leaves_mut().zip(new_masks) {
-        if let Some(m) = m {
-            *leaf.value_mask_mut() = m;
-        }
-    }
-}
-
-/// `tools::levelSetRebuild` (volume to mesh to volume) into the given transform, without
-/// renormalization.
-fn level_set_rebuild<T: RealValue + MeshValue>(
-    grid: &Grid<T>,
-    iso: f32,
-    ex: f32,
-    inw: f32,
-    xform: &Transform,
-) -> Grid<T> {
-    let mut mesher = VolumeToMesh::<T>::new(iso as f64, 0.0, true);
-    mesher.run(grid);
-    let points: Vec<Vec3f> = mesher
-        .point_list()
-        .par_iter()
-        .map(|p| {
-            let q = xform.world_to_index(Vec3d::new(p[0] as f64, p[1] as f64, p[2] as f64));
-            Vec3f::new(q[0] as f32, q[1] as f32, q[2] as f32)
-        })
-        .collect();
-    let mut prims: Vec<[u32; 4]> = Vec::new();
-    for pool in mesher.polygon_pool_list() {
-        prims.extend_from_slice(&pool.quads);
-        prims.extend(pool.triangles.iter().map(|t| [t[0], t[1], t[2], INVALID_IDX]));
-    }
-    let mesh = QuadAndTriangleDataAdapter::new(&points, &prims);
-    mesh_to_volume(&mesh, xform, ex, inw, DISABLE_RENORMALIZATION, None)
-}
-
 /// Fill a closed level set or fog volume with adaptively sized spheres
 /// (`tools::fillWithSpheres`). Returns spheres as `[x, y, z, radius]` in world space.
 ///
@@ -407,7 +289,8 @@ pub fn fill_with_spheres<T: RealValue + MeshValue>(
         let scale = 1.0 / (2.0 * 10000.0 / num_voxels as f64).cbrt();
         let mut xf = grid.transform().clone();
         xf.pre_scale(Vec3d::splat(scale));
-        let g = level_set_rebuild(grid, isovalue, 3.0, 3.0, &xf);
+        let hw = LEVEL_SET_HALF_WIDTH as f32;
+        let g = level_set_rebuild_asymmetric(grid, isovalue, hw, hw, Some(&xf));
         let n = g.active_voxel_count();
         if n > num_voxels {
             num_voxels = n;
@@ -430,13 +313,15 @@ pub fn fill_with_spheres<T: RealValue + MeshValue>(
             m.tree_mut().topology_union(grid.tree());
             m
         };
+        let erode = |t: &mut Tree<bool>| {
+            erode_active_values(t, 1, NearestNeighbors::Face, TilePolicy::IgnoreTiles, true);
+            prune_inactive(t, true);
+        };
         if !add_narrow_band_points || min_sphere_count <= 0 {
-            erode_face_once(interior.tree_mut());
-            interior.tree_mut().prune_inactive();
+            erode(interior.tree_mut());
         } else {
             let copy = interior.tree().clone();
-            erode_face_once(interior.tree_mut());
-            interior.tree_mut().prune_inactive();
+            erode(interior.tree_mut());
             if interior.tree().is_empty() {
                 interior.set_tree(copy);
             }
@@ -518,26 +403,9 @@ pub fn fill_with_spheres<T: RealValue + MeshValue>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::mesh_support::signed_flood_fill_with_values;
 
     fn sphere_grid(radius: f32, voxel: f32, hw: f32) -> Grid<f32> {
-        let mut g = Grid::<f32>::new(voxel * hw).with_transform(Transform::linear(voxel as f64));
-        g.set_grid_class(GridClass::LevelSet);
-        let r0 = radius / voxel;
-        let n = (r0 + hw).ceil() as i32 + 1;
-        let tree = g.tree_mut();
-        for i in -n..=n {
-            for j in -n..=n {
-                for k in -n..=n {
-                    let d = ((i * i + j * j + k * k) as f32).sqrt() - r0;
-                    if d.abs() < hw {
-                        tree.set_value(&Coord::new(i, j, k), d * voxel);
-                    }
-                }
-            }
-        }
-        signed_flood_fill_with_values(tree, voxel * hw, -voxel * hw);
-        g
+        crate::tools::test_util::make_sphere(radius as f64, Vec3d::zero(), voxel as f64, hw as f64)
     }
 
     #[test]

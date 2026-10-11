@@ -9,6 +9,7 @@ pub mod maps;
 pub mod mat;
 pub mod math_util;
 pub mod operators;
+pub mod proximity;
 pub mod quat;
 pub mod ray;
 pub mod stats;

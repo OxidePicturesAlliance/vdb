@@ -4,7 +4,7 @@
 //! applied as separable box filters (a Gaussian is approximated by four successive box passes),
 //! exactly like OpenVDB. Every filter optionally takes a scalar mask grid whose values, remapped
 //! from `[min, max]` to `[0, 1]` with a smooth step (see
-//! [`AlphaMask`](super::interpolation::AlphaMask)), blend between the original and the filtered
+//! [`AlphaMask`]), blend between the original and the filtered
 //! values.
 //!
 //! ```
@@ -18,8 +18,8 @@
 //! assert_eq!(grid.get_value(&Coord::new(3, 3, 3)), 2.0);
 //! ```
 
-use super::internal::{masked_voxel_pass, write_leaf_buffers, MaskSpec};
 use super::interpolation::AlphaMask;
+use super::leaf_buffers::{masked_voxel_pass, write_leaf_buffers, MaskSpec};
 use crate::grid::Grid;
 use crate::math::stencils::DenseStencil;
 use crate::types::{ArithValue, RealValue, Value};

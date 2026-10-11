@@ -207,6 +207,14 @@ impl<T: Value> Grid<T> {
     pub fn voxel_size(&self) -> Vec3d {
         self.transform.voxel_size()
     }
+    /// The voxel size if the transform has uniform scale and cubic voxels (within a relative
+    /// tolerance of 1e-6), `None` otherwise.
+    pub fn uniform_voxel_size(&self) -> Option<f64> {
+        let vs = self.voxel_size();
+        let tol = 1e-6 * vs[0].abs();
+        ((vs[0] - vs[1]).abs() <= tol && (vs[0] - vs[2]).abs() <= tol && self.transform.has_uniform_scale())
+            .then_some(vs[0])
+    }
     pub fn index_to_world(&self, xyz: Vec3d) -> Vec3d {
         self.transform.index_to_world(xyz)
     }

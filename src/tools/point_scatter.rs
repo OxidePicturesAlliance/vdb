@@ -10,7 +10,7 @@
 //! * [`DenseUniformPointScatter`] — a fixed number of points per active voxel;
 //! * [`NonUniformPointScatter`] — a point density proportional to the voxel values.
 
-use super::mesh_support::{visit_values_on_ordered, ActiveValue};
+use super::tree_ops::{visit_values_on_ordered, ActiveValue};
 use crate::grid::Grid;
 use crate::math::{Vec3d, Vec3f};
 use crate::types::Value;

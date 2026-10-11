@@ -3,6 +3,7 @@
 //! `math::cwiseLessThan`, ...), plus the error type returned by fallible tools.
 
 use crate::grid::Grid;
+use crate::math::math_util::is_rel_or_approx_equal;
 use crate::math::Vec3;
 use crate::tree::Tree;
 use crate::types::Value;
@@ -221,16 +222,6 @@ fn lex_gt<T: PartialOrd + Copy>(a: &Vec3<T>, b: &Vec3<T>) -> bool {
     a.0[2] > b.0[2]
 }
 
-/// `math::isRelOrApproxEqual(a, b, eps, eps)`.
-#[inline]
-fn rel_or_approx_eq(a: f64, b: f64, eps: f64) -> bool {
-    if !((a - b).abs() > eps) {
-        return true;
-    }
-    let rel = if b.abs() > a.abs() { ((a - b) / b).abs() } else { ((a - b) / a).abs() };
-    rel <= eps
-}
-
 macro_rules! impl_tool_vec_float {
     ($($t:ty),*) => {$(
         impl ToolValue for Vec3<$t> {
@@ -239,7 +230,7 @@ macro_rules! impl_tool_vec_float {
             #[inline] fn cwise_gt(&self, o: &Self) -> bool { lex_gt(self, o) }
             #[inline]
             fn is_approx_equal(&self, o: &Self) -> bool {
-                (0..3).all(|i| rel_or_approx_eq(self.0[i] as f64, o.0[i] as f64, 1.0e-7))
+                (0..3).all(|i| is_rel_or_approx_equal(self.0[i] as f64, o.0[i] as f64, 1.0e-7, 1.0e-7))
             }
             #[inline] fn difference(self, o: Self) -> Self { self - o }
             #[inline] fn abs_value(self) -> Self { self.map(|v| v.abs()) }

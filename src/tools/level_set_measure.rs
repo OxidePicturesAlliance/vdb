@@ -2,142 +2,15 @@
 //! of `openvdb/tools/LevelSetMeasure.h`).
 //!
 //! The measures are computed with a smeared Dirac delta function (three voxels wide)
-//! applied to finite-difference gradients and curvatures, exactly as in OpenVDB. The small
-//! stencils needed here (central gradient, curvature, first-order and WENO5 upwind
-//! gradients) are implemented privately in this module.
+//! applied to the central-difference gradients of [`GradStencil`] and the curvatures of
+//! [`CurvatureStencil`], exactly as in OpenVDB.
 
 use crate::grid::{Grid, GridClass};
-use crate::math::{Coord, Vec3};
+use crate::math::stencils::{CurvatureStencil, GradStencil};
 use crate::tools::value_traits::{ToolError, ToolResult, ToolValue};
-use crate::tree::{Internal2, LeafNode, ValueAccessor};
+use crate::tree::LeafNode;
 use crate::types::RealValue;
 use rayon::prelude::*;
-
-type Acc<'a, T> = ValueAccessor<'a, Internal2<T>>;
-
-/// Central-difference gradient in world units (`GradStencil::gradient`), in `T` precision.
-#[inline]
-pub(crate) fn central_gradient<T: RealValue>(acc: &Acc<'_, T>, ijk: &Coord, inv_2dx: T) -> Vec3<T> {
-    Vec3::new(
-        acc.get_value(&ijk.offset_by(1, 0, 0)) - acc.get_value(&ijk.offset_by(-1, 0, 0)),
-        acc.get_value(&ijk.offset_by(0, 1, 0)) - acc.get_value(&ijk.offset_by(0, -1, 0)),
-        acc.get_value(&ijk.offset_by(0, 0, 1)) - acc.get_value(&ijk.offset_by(0, 0, -1)),
-    ) * inv_2dx
-}
-
-/// Godunov's norm-squared gradient from backward (`m`) and forward (`p`) differences.
-#[inline]
-pub(crate) fn godunov_norm_sqrd<R: num_traits::Float>(outside: bool, m: [R; 3], p: [R; 3]) -> R {
-    let zero = R::zero();
-    let mut s = zero;
-    for i in 0..3 {
-        s = s + if outside {
-            (m[i].max(zero) * m[i].max(zero)).max(p[i].min(zero) * p[i].min(zero))
-        } else {
-            (m[i].min(zero) * m[i].min(zero)).max(p[i].max(zero) * p[i].max(zero))
-        };
-    }
-    s
-}
-
-/// `ISGradientNormSqrd<FIRST_BIAS>` at `ijk` (index-space differences, no 1/dx scaling).
-#[inline]
-pub(crate) fn first_bias_norm_sq_grad<T: RealValue>(acc: &Acc<'_, T>, ijk: &Coord, center: T) -> T {
-    let v = |x, y, z| acc.get_value(&ijk.offset_by(x, y, z));
-    let up = [v(1, 0, 0) - center, v(0, 1, 0) - center, v(0, 0, 1) - center];
-    let down = [center - v(-1, 0, 0), center - v(0, -1, 0), center - v(0, 0, -1)];
-    godunov_norm_sqrd(center > T::from_f64(0.0), down, up)
-}
-
-/// `math::WENO5` (computed in double precision, as in OpenVDB).
-#[inline]
-fn weno5(v1: f64, v2: f64, v3: f64, v4: f64, v5: f64, scale2: f32) -> f64 {
-    let c = 13.0 / 12.0;
-    let eps = 1.0e-6 * scale2 as f64;
-    let sq = |x: f64| x * x;
-    let a1 = 0.1 / sq(c * sq(v1 - 2.0 * v2 + v3) + 0.25 * sq(v1 - 4.0 * v2 + 3.0 * v3) + eps);
-    let a2 = 0.6 / sq(c * sq(v2 - 2.0 * v3 + v4) + 0.25 * sq(v2 - v4) + eps);
-    let a3 = 0.3 / sq(c * sq(v3 - 2.0 * v4 + v5) + 0.25 * sq(3.0 * v3 - 4.0 * v4 + v5) + eps);
-    (a1 * (2.0 * v1 - 7.0 * v2 + 11.0 * v3) + a2 * (5.0 * v3 - v2 + 2.0 * v4) + a3 * (2.0 * v3 + 5.0 * v4 - v5))
-        / (6.0 * (a1 + a2 + a3))
-}
-
-/// The 19-point WENO stencil values (`WenoStencil`): `[center, x-3..x+3 (6), y.., z..]`.
-pub(crate) fn weno_values<T: RealValue>(acc: &Acc<'_, T>, ijk: &Coord, center: T) -> [T; 19] {
-    let mut v = [center; 19];
-    let offs = [-3, -2, -1, 1, 2, 3];
-    for axis in 0..3 {
-        for (i, o) in offs.iter().enumerate() {
-            let mut d = [0i32; 3];
-            d[axis] = *o;
-            v[1 + axis * 6 + i] = acc.get_value(&ijk.offset_by(d[0], d[1], d[2]));
-        }
-    }
-    v
-}
-
-/// `WenoStencil::normSqGrad` (world units) for the given stencil values.
-pub(crate) fn weno_norm_sq_grad<T: RealValue>(v: &[T; 19], dx: f64, iso: T) -> T {
-    let dx2 = (dx * dx) as f32;
-    let inv_dx2 = 1.0 / (dx * dx);
-    let d = |a: usize, b: usize| (v[a] - v[b]).to_f64();
-    let mut m = [0.0f64; 3];
-    let mut p = [0.0f64; 3];
-    for axis in 0..3 {
-        let b = 1 + axis * 6; // indices: b+0 = -3, b+1 = -2, b+2 = -1, b+3 = +1, b+4 = +2, b+5 = +3
-        m[axis] = weno5(d(b + 1, b), d(b + 2, b + 1), d(0, b + 2), d(b + 3, 0), d(b + 4, b + 3), dx2);
-        p[axis] = weno5(d(b + 5, b + 4), d(b + 4, b + 3), d(b + 3, 0), d(0, b + 2), d(b + 2, b + 1), dx2);
-    }
-    T::from_f64(inv_dx2 * godunov_norm_sqrd(v[0] > iso, m, p))
-}
-
-/// `WenoStencil::zeroCrossing`: the sign of the center differs from a face neighbor.
-pub(crate) fn weno_zero_crossing<T: RealValue>(v: &[T; 19]) -> bool {
-    let zero = T::from_f64(0.0);
-    let n = [v[3], v[4], v[9], v[10], v[15], v[16]];
-    if v[0] > zero {
-        n.iter().any(|x| *x < zero)
-    } else {
-        n.iter().any(|x| *x > zero)
-    }
-}
-
-/// `CurvatureStencil::curvatures`: mean and Gaussian curvature (in `T` precision).
-fn curvatures<T: RealValue>(acc: &Acc<'_, T>, ijk: &Coord, center: T, inv_2dx: T, inv_dx2: T) -> (T, T) {
-    let g = |x, y, z| acc.get_value(&ijk.offset_by(x, y, z)).to_f64();
-    let c = center.to_f64();
-    let (v1, v2, v3, v4, v5, v6) = (g(-1, 0, 0), g(1, 0, 0), g(0, -1, 0), g(0, 1, 0), g(0, 0, -1), g(0, 0, 1));
-    let (v7, v8, v9, v10) = (g(-1, -1, 0), g(1, -1, 0), g(-1, 1, 0), g(1, 1, 0));
-    let (v11, v12, v13, v14) = (g(-1, 0, -1), g(1, 0, -1), g(-1, 0, 1), g(1, 0, 1));
-    let (v15, v16, v17, v18) = (g(0, -1, -1), g(0, 1, -1), g(0, -1, 1), g(0, 1, 1));
-    let dx = 0.5 * (v2 - v1);
-    let dy = 0.5 * (v4 - v3);
-    let dz = 0.5 * (v6 - v5);
-    let (dx2, dy2, dz2) = (dx * dx, dy * dy, dz * dz);
-    let norm_grad2 = dx2 + dy2 + dz2;
-    if norm_grad2 <= crate::math::TOLERANCE_F64 {
-        return (T::from_f64(0.0), T::from_f64(0.0));
-    }
-    let dxx = v2 - 2.0 * c + v1;
-    let dyy = v4 - 2.0 * c + v3;
-    let dzz = v6 - 2.0 * c + v5;
-    let dxy = 0.25 * (v10 - v8 + v7 - v9);
-    let dxz = 0.25 * (v14 - v12 + v11 - v13);
-    let dyz = 0.25 * (v18 - v16 + v15 - v17);
-    let alpha_m =
-        dx2 * (dyy + dzz) + dy2 * (dxx + dzz) + dz2 * (dxx + dyy) - 2.0 * (dx * (dy * dxy + dz * dxz) + dy * dz * dyz);
-    let alpha_g = dx2 * (dyy * dzz - dyz * dyz)
-        + dy2 * (dxx * dzz - dxz * dxz)
-        + dz2 * (dxx * dyy - dxy * dxy)
-        + 2.0
-            * (dy * dz * (dxy * dxz - dyz * dxx)
-                + dx * dz * (dxy * dyz - dxz * dyy)
-                + dx * dy * (dxz * dyz - dxy * dzz));
-    let norm_grad = norm_grad2.sqrt();
-    let mean = T::from_f64(alpha_m * inv_2dx.to_f64() / norm_grad.powi(3));
-    let gauss = T::from_f64(alpha_g * inv_dx2.to_f64() / norm_grad.powi(4));
-    (mean, gauss)
-}
 
 /// Smeared Dirac delta of half-width `eps` (`DiracDelta`).
 #[derive(Clone, Copy)]
@@ -202,27 +75,32 @@ impl<'a, T: RealValue + ToolValue> LevelSetMeasure<'a, T> {
         let tree = self.grid.tree();
         let dx = self.dx;
         let inv_dx = 1.0 / dx;
-        let inv_2dx = T::from_f64(0.5 / dx);
         let dd = DiracDelta::new(1.5);
+        let grid = self.grid;
         let parts: Vec<(f64, f64)> = tree
             .leaf_refs()
             .par_iter()
-            .map(|leaf: &&LeafNode<T>| {
-                let acc = tree.accessor();
-                let (mut sa, mut sv) = (0.0, 0.0);
-                for (pos, v) in leaf.iter_on() {
-                    let d = dd.eval(inv_dx * (*v).to_f64());
-                    if d > 0.0 {
-                        let p = leaf.offset_to_global_coord(pos);
-                        let g = central_gradient(&acc, &p, inv_2dx);
-                        let len = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
-                        sa += d * len.to_f64();
-                        sv += d
-                            * (g[0].to_f64() * p[0] as f64 + g[1].to_f64() * p[1] as f64 + g[2].to_f64() * p[2] as f64);
+            .map_init(
+                || GradStencil::with_dx(grid, dx),
+                |st, leaf: &&LeafNode<T>| {
+                    let (mut sa, mut sv) = (0.0, 0.0);
+                    for (pos, v) in leaf.iter_on() {
+                        let d = dd.eval(inv_dx * (*v).to_f64());
+                        if d > 0.0 {
+                            let p = leaf.offset_to_global_coord(pos);
+                            st.move_to(&p);
+                            let g = st.gradient();
+                            let len = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+                            sa += d * len.to_f64();
+                            sv += d
+                                * (g[0].to_f64() * p[0] as f64
+                                    + g[1].to_f64() * p[1] as f64
+                                    + g[2].to_f64() * p[2] as f64);
+                        }
                     }
-                }
-                (sa, sv)
-            })
+                    (sa, sv)
+                },
+            )
             .collect();
         let area = sorted_sum(parts.iter().map(|p| p.0).collect());
         let volume = sorted_sum(parts.iter().map(|p| p.1).collect()) / 3.0;
@@ -237,29 +115,30 @@ impl<'a, T: RealValue + ToolValue> LevelSetMeasure<'a, T> {
         let tree = self.grid.tree();
         let dx = self.dx;
         let (dx2, inv_dx) = (dx * dx, 1.0 / dx);
-        let inv_2dx = T::from_f64(0.5 / dx);
-        let inv_dx2 = T::from_f64(4.0 * (0.5 / dx) * (0.5 / dx));
-        let inv_2dx_f = T::from_f64(0.5 / dx);
         let dd = DiracDelta::new(1.5);
+        let grid = self.grid;
         let parts: Vec<(f64, f64)> = tree
             .leaf_refs()
             .par_iter()
-            .map(|leaf: &&LeafNode<T>| {
-                let acc = tree.accessor();
-                let (mut sm, mut sg) = (0.0, 0.0);
-                for (pos, v) in leaf.iter_on() {
-                    let d = dd.eval(inv_dx * (*v).to_f64());
-                    if d > 0.0 {
-                        let p = leaf.offset_to_global_coord(pos);
-                        let g = central_gradient(&acc, &p, inv_2dx);
-                        let da = d * (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt().to_f64();
-                        let (mean, gauss) = curvatures(&acc, &p, *v, inv_2dx_f, inv_dx2);
-                        sm += da * mean.to_f64() * dx;
-                        sg += da * gauss.to_f64() * dx2;
+            .map_init(
+                || CurvatureStencil::with_dx(grid, dx),
+                |st, leaf: &&LeafNode<T>| {
+                    let (mut sm, mut sg) = (0.0, 0.0);
+                    for (pos, v) in leaf.iter_on() {
+                        let d = dd.eval(inv_dx * (*v).to_f64());
+                        if d > 0.0 {
+                            let p = leaf.offset_to_global_coord(pos);
+                            st.move_to(&p);
+                            let g = st.gradient();
+                            let da = d * (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt().to_f64();
+                            let (mean, gauss) = st.curvatures();
+                            sm += da * mean.to_f64() * dx;
+                            sg += da * gauss.to_f64() * dx2;
+                        }
                     }
-                }
-                (sm, sg)
-            })
+                    (sm, sg)
+                },
+            )
             .collect();
         let m = sorted_sum(parts.iter().map(|p| p.0).collect());
         let g = sorted_sum(parts.iter().map(|p| p.1).collect());

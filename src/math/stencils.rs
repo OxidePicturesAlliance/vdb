@@ -717,32 +717,11 @@ impl<'a, T: RealValue> WenoStencil<'a, T> {
     }
     #[inline]
     fn upwind(&self, axis: usize) -> (T, T) {
-        let v = self.base.values();
-        let o = 6 * axis;
-        let (m3, m2, m1, p1, p2, p3) = (v[o + 1], v[o + 2], v[o + 3], v[o + 4], v[o + 5], v[o + 6]);
-        let c = v[0];
-        let dm = weno5(m2 - m3, m1 - m2, c - m1, p1 - c, p2 - p1, self.dx2);
-        let dp = weno5(p3 - p2, p2 - p1, p1 - c, c - m1, m1 - m2, self.dx2);
-        (dm, dp)
+        weno_upwind(self.base.values(), axis, self.dx2)
     }
     /// `|∇φ|²` using WENO5 upwinding and Godunov's scheme, relative to `iso`.
     pub fn norm_sq_grad(&self, iso: T) -> T {
-        let (xm, xp) = self.upwind(0);
-        let (ym, yp) = self.upwind(1);
-        let (zm, zp) = self.upwind(2);
-        let v0 = self.base.values()[0];
-        T::from_f64(
-            self.inv_dx2.to_f64()
-                * godunovs_norm_sqrd(
-                    v0 > iso,
-                    xm.to_f64(),
-                    xp.to_f64(),
-                    ym.to_f64(),
-                    yp.to_f64(),
-                    zm.to_f64(),
-                    zp.to_f64(),
-                ),
-        )
+        weno_norm_sq_grad_values(self.base.values(), self.dx2, self.inv_dx2, iso)
     }
     /// Fifth-order upwind gradient with respect to the direction `vel`.
     pub fn gradient_upwind(&self, vel: Vec3<T>) -> Vec3<T> {
@@ -766,8 +745,52 @@ impl<'a, T: RealValue> WenoStencil<'a, T> {
     }
     /// True if the center value's sign differs from that of any face neighbor.
     pub fn zero_crossing(&self) -> bool {
-        zero_crossing(self.base.values(), [3, 4, 9, 10, 15, 16])
+        weno_zero_crossing(self.base.values())
     }
+}
+
+/// The 19 values of a [`WenoStencil`] (center, then offsets -3, -2, -1, 1, 2, 3 along x, y
+/// and z) read from any value source, e.g. an [`AccessorAt`](super::finite_difference::AccessorAt).
+pub fn weno_values<S: StencilValues + ?Sized>(s: &S) -> [S::Value; 19] {
+    WENO_PT.map(|o| s.value_at(o[0], o[1], o[2]))
+}
+
+/// WENO5 backward and forward one-sided derivatives along `axis` from the 19 values of a
+/// [`WenoStencil`] (index-space differences).
+#[inline]
+fn weno_upwind<T: RealValue>(v: &[T], axis: usize, dx2: f32) -> (T, T) {
+    let o = 6 * axis;
+    let (m3, m2, m1, p1, p2, p3) = (v[o + 1], v[o + 2], v[o + 3], v[o + 4], v[o + 5], v[o + 6]);
+    let c = v[0];
+    let dm = weno5(m2 - m3, m1 - m2, c - m1, p1 - c, p2 - p1, dx2);
+    let dp = weno5(p3 - p2, p2 - p1, p1 - c, c - m1, m1 - m2, dx2);
+    (dm, dp)
+}
+
+/// `WenoStencil::normSqGrad` from the 19 stencil values (see [`weno_values`]), with `dx2` the
+/// squared voxel size and `inv_dx2` its inverse.
+pub fn weno_norm_sq_grad_values<T: RealValue>(v: &[T], dx2: f32, inv_dx2: T, iso: T) -> T {
+    let (xm, xp) = weno_upwind(v, 0, dx2);
+    let (ym, yp) = weno_upwind(v, 1, dx2);
+    let (zm, zp) = weno_upwind(v, 2, dx2);
+    T::from_f64(
+        inv_dx2.to_f64()
+            * godunovs_norm_sqrd(
+                v[0] > iso,
+                xm.to_f64(),
+                xp.to_f64(),
+                ym.to_f64(),
+                yp.to_f64(),
+                zm.to_f64(),
+                zp.to_f64(),
+            ),
+    )
+}
+
+/// `WenoStencil::zeroCrossing` from the 19 stencil values: true if the center value's sign
+/// differs from that of any face neighbor.
+pub fn weno_zero_crossing<T: RealValue>(v: &[T]) -> bool {
+    zero_crossing(v, [3, 4, 9, 10, 15, 16])
 }
 
 /// 19-point stencil supporting mean, Gaussian and principal curvatures
@@ -838,7 +861,8 @@ impl<'a, T: RealValue> CurvatureStencil<'a, T> {
         let dy = 0.5 * (v[4] - v[3]).to_f64();
         let dz = 0.5 * (v[6] - v[5]).to_f64();
         let ng2 = dx * dx + dy * dy + dz * dz;
-        if ng2 <= T::tolerance().to_f64() {
+        // OpenVDB compares against `math::Tolerance<Real>` (double precision).
+        if ng2 <= crate::math::TOLERANCE_F64 {
             return None;
         }
         let t = CurvTerms {

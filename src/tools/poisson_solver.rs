@@ -6,7 +6,8 @@
 //! outside the domain), and the system is solved with the preconditioned conjugate gradient
 //! solver of [`crate::math::conj_gradient`].
 
-use super::internal::{erode_face, topology_copy};
+use super::morphology::{erode_active_values, NearestNeighbors, TilePolicy};
+use super::tree_ops::topology_copy;
 use crate::math::conj_gradient::{
     solve as pcg_solve, IncompleteCholeskyPreconditioner, JacobiPreconditioner, Preconditioner, SparseStencilMatrix,
     State,
@@ -236,8 +237,8 @@ pub fn solve_with_boundary_conditions_and_preconditioner<T: RealValue, D: Value,
 ) -> Tree<T> {
     let index = create_index_tree(domain);
     let mut b = create_vector_from_tree(tree, &index);
-    let mut interior = topology_copy(&index, false);
-    erode_face(&mut interior, 1);
+    let mut interior: Tree<bool> = topology_copy(&index, false);
+    erode_active_values(&mut interior, 1, NearestNeighbors::Face, TilePolicy::IgnoreTiles, true);
     let mut lap = create_is_laplacian_with_boundary_conditions(&index, &interior, op, &mut b, staggered);
     lap.scale(-1.0);
     b.iter_mut().for_each(|v| *v = -*v);

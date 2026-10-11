@@ -15,7 +15,7 @@ use std::fmt;
 
 /// A closed time interval `[t0, t1]` along a ray (`Ray::TimeSpan`).
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct TimeSpan<T> {
+pub struct TimeSpan<T = f64> {
     /// Start time.
     pub t0: T,
     /// End time.

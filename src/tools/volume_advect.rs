@@ -6,8 +6,8 @@
 //! departure point. Second-order MacCormack and BFECC schemes with clamping or reverting
 //! limiters are supported, as are sub-stepping and masks.
 
-use super::internal::dilate_face;
 use super::interpolation::{BoxSampler, Sampler};
+use super::morphology::{dilate_active_values, NearestNeighbors, TilePolicy};
 use super::velocity_fields::VelocityIntegrator;
 use crate::grid::Grid;
 use crate::math::{Coord, Vec3, Vec3d};
@@ -47,7 +47,7 @@ pub enum Limiter {
 }
 
 /// Value types that can be advected: scalars and 3-vectors of `f32`/`f64`.
-pub trait AdvectValue: ArithValue {
+pub trait AdvectValue: ArithValue + crate::tools::value_traits::ToolValue {
     /// OpenVDB's `math::cwiseLessThan` (all components less).
     fn cwise_less(&self, o: &Self) -> bool;
     /// OpenVDB's `math::cwiseGreaterThan` (all components greater).
@@ -208,7 +208,7 @@ where
             let src = if step == 0 { grid.clone() } else { out.clone() };
             let mut tmp = src.clone();
             tmp.tree_mut().voxelize_active_tiles();
-            dilate_face(tmp.tree_mut(), n);
+            dilate_active_values(tmp.tree_mut(), n as i32, NearestNeighbors::Face, TilePolicy::ExpandTiles, true);
             if let Some(m) = mask {
                 intersect_with_mask(&mut tmp, m);
                 tmp.tree_mut().prune_inactive();
@@ -263,7 +263,7 @@ where
             SemiLagrangian::Rk3 => 3,
             SemiLagrangian::Rk4 => 4,
         };
-        let write = |g: &mut Grid<T>, bufs: &[Vec<T>]| super::internal::write_leaf_buffers(g.tree_mut(), bufs);
+        let write = |g: &mut Grid<T>, bufs: &[Vec<T>]| super::leaf_buffers::write_leaf_buffers(g.tree_mut(), bufs);
         match self.integrator {
             SemiLagrangian::Mac | SemiLagrangian::Bfecc => {
                 let fwd = self.rk_pass::<T, S>(out, src, src, dt, order);
