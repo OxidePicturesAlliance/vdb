@@ -263,7 +263,8 @@ fn sample_into<S: SampleSource, T: SampleTarget, F: IndexFilter>(
                     .map(|(ijk, i)| {
                         let p = h.get(i);
                         let is = Vec3d::new(p[0] as f64, p[1] as f64, p[2] as f64) + ijk.as_vec3d();
-                        let is = if aligned { is } else { source_xform.world_to_index(points_xform.index_to_world(is)) };
+                        let is =
+                            if aligned { is } else { source_xform.world_to_index(points_xform.index_to_world(is)) };
                         (i, is)
                     })
                     .collect()

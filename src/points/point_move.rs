@@ -102,7 +102,10 @@ pub fn move_points_to_transform<D: PointDeformer, F: IndexFilter>(
             for &(i, voxel, local) in &moved {
                 p.set(i, local);
                 let Some(&t) = target_index.get(&voxel.align_down(8)) else { continue };
-                out.push((t, Move { source_leaf: idx, source_index: i, voxel: LeafNode::<u32>::coord_to_offset(&voxel) }));
+                out.push((
+                    t,
+                    Move { source_leaf: idx, source_index: i, voxel: LeafNode::<u32>::coord_to_offset(&voxel) },
+                ));
             }
             Ok(out)
         })

@@ -22,7 +22,11 @@ use std::ops::{Add, AddAssign, Div, Mul, Sub};
 /// Attribute value types supported by the statistics functions.
 pub trait StatValue: AttributeValue + Value {
     /// The averaging type (`ConvertElementType<T, double>`).
-    type Avg: Value + Add<Output = Self::Avg> + Sub<Output = Self::Avg> + Mul<f64, Output = Self::Avg> + Div<f64, Output = Self::Avg>;
+    type Avg: Value
+        + Add<Output = Self::Avg>
+        + Sub<Output = Self::Avg>
+        + Mul<f64, Output = Self::Avg>
+        + Div<f64, Output = Self::Avg>;
     /// The accumulation type (`PromoteType<T>::Highest`).
     type Sum: Value + AddAssign + Mul<Self::SumScalar, Output = Self::Sum>;
     /// Scalar of the accumulation type.
@@ -177,7 +181,11 @@ impl<A: Copy + Add<Output = A> + Sub<Output = A> + Mul<f64, Output = A> + Div<f6
     }
 }
 
-fn leaf_averages<T: StatValue, F: IndexFilter>(tree: &PointDataTree, pos: usize, filter: &F) -> Vec<Option<Sample<T::Avg>>> {
+fn leaf_averages<T: StatValue, F: IndexFilter>(
+    tree: &PointDataTree,
+    pos: usize,
+    filter: &F,
+) -> Vec<Option<Sample<T::Avg>>> {
     tree.leaf_vec()
         .par_iter()
         .map(|leaf| {

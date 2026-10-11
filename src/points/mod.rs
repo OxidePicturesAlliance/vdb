@@ -39,6 +39,7 @@ pub mod point_delete;
 pub mod point_group;
 pub mod point_mask;
 pub mod point_move;
+pub mod point_rasterize_sdf;
 pub mod point_sample;
 pub mod point_scatter;
 pub mod point_statistics;
@@ -70,14 +71,6 @@ pub use point_data_grid::{
     PointDataGrid, PointDataLeaf, PointDataLeafMut, PointDataLeafNode, PointDataTree, PointLeaf, PointLeafMut,
 };
 pub use point_delete::{delete_from_group, delete_from_groups, keep_points_by_filter};
-pub use point_move::{move_points, move_points_to_transform, CachedDeformer};
-pub use point_scatter::{dense_uniform_point_scatter, non_uniform_point_scatter, uniform_point_scatter};
-pub use point_sample::{
-    box_sample, point_sample, quadratic_sample, sample_grid, sample_grid_auto, SampleSource, SampleTarget, SampledValue,
-};
-pub use point_statistics::{
-    accumulate, accumulate_tree, eval_average, eval_average_tree, eval_min_max, eval_min_max_trees, StatValue,
-};
 pub use point_group::{
     append_group, append_groups, compact_groups, delete_missing_point_groups, drop_all_groups, drop_group, drop_groups,
     set_group, set_group_all, set_group_by_filter, set_group_by_random_percentage, set_group_by_random_target,
@@ -85,6 +78,18 @@ pub use point_group::{
 pub use point_mask::{
     convert_points_to_mask, convert_points_to_mask_deformed, convert_points_to_mask_transformed,
     convert_points_to_mask_tree, CountValue, NullDeformer, PointDeformer,
+};
+pub use point_move::{move_points, move_points_to_transform, CachedDeformer};
+pub use point_rasterize_sdf::{
+    rasterize_smooth_spheres, rasterize_smooth_spheres_varying, rasterize_spheres, rasterize_spheres_varying,
+    LEVEL_SET_HALF_WIDTH,
+};
+pub use point_sample::{
+    box_sample, point_sample, quadratic_sample, sample_grid, sample_grid_auto, SampleSource, SampleTarget, SampledValue,
+};
+pub use point_scatter::{dense_uniform_point_scatter, non_uniform_point_scatter, uniform_point_scatter};
+pub use point_statistics::{
+    accumulate, accumulate_tree, eval_average, eval_average_tree, eval_min_max, eval_min_max_trees, StatValue,
 };
 
 use thiserror::Error;

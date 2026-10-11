@@ -14,6 +14,7 @@
 #include <openvdb/points/PointDataGrid.h>
 #include <openvdb/points/PointGroup.h>
 #include <openvdb/points/PointScatter.h>
+#include <openvdb/points/PointRasterizeSDF.h>
 
 #include <cstdint>
 #include <cstdio>
@@ -266,6 +267,22 @@ int gen(const std::string& dir)
         PointDataGrid::Ptr nonUniform = nonUniformPointScatter(*density, 4.0f, /*seed=*/7, 0.8f);
         nonUniform->setName("nonuniform");
         write(dir + "/points_scatter.vdb", {uniform, dense, nonUniform}, io::COMPRESS_BLOSC | io::COMPRESS_ACTIVE_MASK);
+    }
+
+    // Level sets rasterized from points (mirrored by rasterize_sdf_matches_cpp in tests/points.rs).
+    {
+        PointDataGrid::Ptr pts = makeGrid<NullCodec>("attrs", true);
+        FloatGrid::Ptr spheres = rasterizeSpheres(*pts, /*radius=*/0.3, /*halfband=*/3.0);
+        spheres->setName("spheres");
+        FloatGrid::Ptr varying = rasterizeSpheres(*pts, "density", /*scale=*/0.02, /*halfband=*/2.0);
+        varying->setName("spheres_varying");
+        FloatGrid::Ptr smooth = rasterizeSmoothSpheres(*pts, /*radius=*/0.3, /*search=*/0.6, /*halfband=*/3.0);
+        smooth->setName("smooth");
+        FloatGrid::Ptr smoothVarying =
+            rasterizeSmoothSpheres(*pts, "density", /*scale=*/0.02, /*search=*/0.5, /*halfband=*/2.0);
+        smoothVarying->setName("smooth_varying");
+        write(dir + "/points_sdf.vdb", {spheres, varying, smooth, smoothVarying},
+            io::COMPRESS_BLOSC | io::COMPRESS_ACTIVE_MASK);
     }
 
     // An empty grid and a grid with points in inactive voxels.

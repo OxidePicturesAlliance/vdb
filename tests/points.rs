@@ -447,6 +447,35 @@ fn scatter_matches_cpp() {
     assert_same_dump(&actual, &expected, "scatter");
 }
 
+/// Compare two level sets: same active voxels, values within `tol`.
+fn assert_same_sdf(a: &vdb::FloatGrid, b: &vdb::FloatGrid, tol: f32, what: &str) {
+    assert_eq!(a.active_voxel_count(), b.active_voxel_count(), "{}: active voxel count", what);
+    assert_eq!(a.background(), b.background(), "{}: background", what);
+    let acc = b.accessor();
+    for (c, v) in a.tree().active_voxels() {
+        let (w, on) = acc.probe_value(&c);
+        assert!(on, "{}: voxel {:?} inactive", what, c);
+        assert!((v - w).abs() <= tol, "{}: voxel {:?}: {} vs {}", what, c, v, w);
+    }
+}
+
+/// Level sets rasterized from points match OpenVDB's (points_sdf.vdb was written by
+/// points_ref from the points of points_attrs.vdb).
+#[test]
+fn rasterize_sdf_matches_cpp() {
+    let (_, cpp) = io::read_file(data("points").join("points_sdf.vdb")).unwrap();
+    let cpp = |name: &str| cpp.iter().find(|g| g.name() == name).unwrap().as_float().unwrap().clone();
+    let pts = read_points("points_attrs", "attrs");
+    let spheres = rasterize_spheres(&pts, 0.3, 3.0, None, &NullFilter).unwrap();
+    assert_same_sdf(&spheres, &cpp("spheres"), 1e-6, "spheres");
+    let varying = rasterize_spheres_varying(&pts, "density", 0.02, 2.0, None, &NullFilter).unwrap();
+    assert_same_sdf(&varying, &cpp("spheres_varying"), 1e-6, "spheres_varying");
+    let smooth = rasterize_smooth_spheres(&pts, 0.3, 0.6, 3.0, None, &NullFilter).unwrap();
+    assert_same_sdf(&smooth, &cpp("smooth"), 1e-5, "smooth");
+    let smooth_varying = rasterize_smooth_spheres_varying(&pts, "density", 0.02, 0.5, 2.0, None, &NullFilter).unwrap();
+    assert_same_sdf(&smooth_varying, &cpp("smooth_varying"), 1e-5, "smooth_varying");
+}
+
 #[test]
 fn point_count_and_mask_grids() {
     let grid = read_points("points_attrs", "attrs");
