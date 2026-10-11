@@ -332,7 +332,8 @@ impl<'a, T: Value> BaseStencil<'a, T> {
         let buf = leaf.buffer();
         let base = LeafNode::<T>::coord_to_offset(ijk) as i32;
         let (lx, ly, lz) = (ijk[0] & 7, ijk[1] & 7, ijk[2] & 7);
-        for (n, ((v, o), lo)) in self.values.iter_mut().zip(self.offsets.iter()).zip(self.leaf_offsets.iter()).enumerate()
+        for (n, ((v, o), lo)) in
+            self.values.iter_mut().zip(self.offsets.iter()).zip(self.leaf_offsets.iter()).enumerate()
         {
             *v = match center_value {
                 Some(c) if n == cp => c,

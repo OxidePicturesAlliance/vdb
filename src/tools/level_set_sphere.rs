@@ -98,13 +98,10 @@ pub fn create_level_set_sphere<T: RealValue + ToolValue>(
         let start = imin & !(SLAB - 1);
         let chunks: Vec<(i32, i32)> =
             (start..imax).step_by(SLAB as usize).map(|i0| (i0.max(imin), (i0 + SLAB).min(imax))).collect();
-        let merged = chunks
-            .par_iter()
-            .map(|&(a, b)| kernel(a, b))
-            .reduce_with(|mut a, mut b| {
-                merge(&mut a, &mut b, MergePolicy::ActiveStates);
-                a
-            });
+        let merged = chunks.par_iter().map(|&(a, b)| kernel(a, b)).reduce_with(|mut a, mut b| {
+            merge(&mut a, &mut b, MergePolicy::ActiveStates);
+            a
+        });
         if let Some(mut p) = merged {
             merge(tree, &mut p, MergePolicy::ActiveStates);
         }

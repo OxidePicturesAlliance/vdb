@@ -8,8 +8,8 @@
 //!
 //! Supported input value types are `f32`, `f64` and `bool` (see [`MeshValue`]).
 
-use super::volume_to_mesh_tables::{ADAPTABLE, AMBIGUOUS_FACE, EDGE_GROUP_TABLE};
 use super::tree_ops::steal_leaves;
+use super::volume_to_mesh_tables::{ADAPTABLE, AMBIGUOUS_FACE, EDGE_GROUP_TABLE};
 use crate::grid::{Grid, GridClass};
 use crate::math::{Coord, CoordBBox, Transform, Vec3d, Vec3f};
 use crate::tree::{Internal2, LeafNode, Node, Tree, ValueAccessor};
@@ -915,7 +915,6 @@ pub(crate) fn identify_surface_intersecting_voxels<T: MeshValue>(tree: &Tree<T>,
                     macc.touch_leaf(&origin).value_mask_mut().union_with(&local);
                 }
             }
-            drop(macc);
             mask
         })
         .reduce_with(|mut a, mut b| {
