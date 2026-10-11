@@ -7,9 +7,10 @@
 //! in voxel units is below [`ParticlesToLevelSet::rmin`] (default 1.5, the Nyquist limit)
 //! or above [`ParticlesToLevelSet::rmax`] are ignored and counted.
 //!
-//! Differences from OpenVDB: the particle buckets are processed sequentially in partitioner
-//! order (equivalent to OpenVDB with `setGrainSize(0)`), which makes the output fully
-//! deterministic. When attributes are transferred into a non-empty level set, the final
+//! Differences from OpenVDB: level sets are rasterized in parallel over ranges of particle
+//! buckets, but the per-range results are merged so that the output is exactly that of
+//! processing the buckets sequentially in partitioner order (OpenVDB with
+//! `setGrainSize(0)`), which makes it fully deterministic. Masks are rasterized sequentially. When attributes are transferred into a non-empty level set, the final
 //! CSG union is a voxel-wise minimum.
 
 use super::point_partitioner::{PointArray, PointPartitioner};
@@ -18,7 +19,8 @@ use super::signed_flood_fill::signed_flood_fill_with_values;
 use super::tree_ops::steal_leaves;
 use crate::grid::Grid;
 use crate::math::{Coord, CoordBBox, Vec3d};
-use crate::tree::{Node, Tree};
+use crate::tree::{LeafNode, Node, Tree};
+use rayon::prelude::*;
 use crate::types::{RealValue, Value};
 
 /// A list of particles (OpenVDB's `ParticleList` concept): positions (via [`PointArray`]),
@@ -175,16 +177,40 @@ fn make_sphere_sdf<T: P2lsValue, A: Copy, V: RasterValue<T, A>>(
     let lo = Coord::new((p[0] - max).floor() as i32, (p[1] - max).floor() as i32, (p[2] - max).floor() as i32);
     let hi = Coord::new((p[0] + max).ceil() as i32, (p[1] + max).ceil() as i32, (p[2] + max).ceil() as i32);
     let inside = tree.background().negated();
+    let zero = T::from_f64(0.0);
     let mut acc = tree.accessor_mut();
     for x in lo[0]..=hi[0] {
         let x2 = (x as f64 - p[0]) * (x as f64 - p[0]);
         for y in lo[1]..=hi[1] {
             let x2y2 = x2 + (y as f64 - p[1]) * (y as f64 - p[1]);
+            if x2y2 >= max2 {
+                continue;
+            }
             for z in lo[2]..=hi[2] {
                 let x2y2z2 = x2y2 + (z as f64 - p[2]) * (z as f64 - p[2]);
+                if x2y2z2 >= max2 {
+                    continue;
+                }
                 let c = Coord::new(x, y, z);
+                if let Some(leaf) = acc.probe_leaf(&c) {
+                    // Fast path: work on the (cached) leaf directly.
+                    let n = LeafNode::<V>::coord_to_offset(&c);
+                    let (v, on) = (*leaf.get_value_at(n), leaf.is_value_on_at(n));
+                    if !on && v.visible() < zero {
+                        continue;
+                    }
+                    if x2y2z2 <= min2 {
+                        leaf.set_value_off_at(n, inside);
+                    } else {
+                        let d = V::make(T::from_f64(dx * (x2y2z2.sqrt() - r)), att);
+                        if d.visible() < v.visible() {
+                            leaf.set_value_on_at(n, d);
+                        }
+                    }
+                    continue;
+                }
                 let (v, on) = acc.probe_value(&c);
-                if x2y2z2 >= max2 || (!on && v.visible() < T::from_f64(0.0)) {
+                if !on && v.visible() < zero {
                     continue;
                 }
                 if x2y2z2 <= min2 {
@@ -195,6 +221,53 @@ fn make_sphere_sdf<T: P2lsValue, A: Copy, V: RasterValue<T, A>>(
                 if d.visible() < v.visible() {
                     acc.set_value(&c, d);
                 }
+            }
+        }
+    }
+}
+
+/// Merge `b`, rasterized from particles that come after those rasterized into `a`, into
+/// `a`. The result is the same as rasterizing all of them into `a` in order: a voxel inside
+/// a particle in either tree stays inside, otherwise the smaller distance wins and ties go
+/// to `a`. (`b` must have been rasterized into an empty tree.)
+fn merge_sdf<T: P2lsValue, A: Copy, V: RasterValue<T, A>>(a: &mut Tree<V>, mut b: Tree<V>) {
+    let zero = T::from_f64(0.0);
+    let bg = *a.background();
+    let is_inside = |v: &V, on: bool| !on && v.visible() < zero;
+    let mut acc = a.accessor_mut();
+    for leaf in steal_leaves(&mut b, bg) {
+        let origin = leaf.origin();
+        if acc.probe_leaf(&origin).is_none() {
+            let (v, on) = acc.probe_value(&origin);
+            if !on && v == bg {
+                // Untouched region of `a`: take the leaf as is.
+                acc.add_leaf(leaf);
+                continue;
+            }
+            // A tile: only densify it if some voxel changes, as the sequential order would.
+            let changes = !is_inside(&v, on)
+                && (0..LeafNode::<V>::SIZE).any(|n| {
+                    let (bv, bon) = (*leaf.get_value_at(n), leaf.is_value_on_at(n));
+                    is_inside(&bv, bon) || (bon && bv.visible() < v.visible())
+                });
+            if !changes {
+                continue;
+            }
+        }
+        let dst = acc.touch_leaf(&origin);
+        for n in 0..LeafNode::<V>::SIZE {
+            let (bv, bon) = (*leaf.get_value_at(n), leaf.is_value_on_at(n));
+            if !bon && !is_inside(&bv, bon) {
+                continue; // not touched in `b`
+            }
+            let (av, aon) = (*dst.get_value_at(n), dst.is_value_on_at(n));
+            if is_inside(&av, aon) {
+                continue;
+            }
+            if is_inside(&bv, bon) {
+                dst.set_value_off_at(n, bv);
+            } else if bv.visible() < av.visible() {
+                dst.set_value_on_at(n, bv);
             }
         }
     }
@@ -261,6 +334,11 @@ enum Mode {
 }
 
 /// Returns (min count, max count) of ignored particles.
+///
+/// Level sets are rasterized in parallel: each task rasterizes a contiguous range of
+/// partitioner buckets into its own tree, and the trees are merged in bucket order with
+/// [`merge_sdf`], which gives the same result as the sequential order. Masks are rasterized
+/// sequentially.
 fn raster<T, A, V, P, F>(
     tree: &mut Tree<V>,
     xform: &crate::math::Transform,
@@ -274,9 +352,52 @@ where
     A: Copy,
     V: RasterValue<T, A>,
     P: ParticleList + ?Sized,
-    F: Fn(usize) -> A,
+    F: Fn(usize) -> A + Sync,
 {
     let partitioner = PointPartitioner::<3>::create(particles, xform, false, false, true);
+    let buckets = partitioner.size();
+    let threads = rayon::current_num_threads();
+    let tasks = if T::IS_MASK || threads == 1 { 1 } else { (threads * 4).min(buckets / 16).max(1) };
+    if tasks == 1 {
+        return raster_buckets::<T, A, V, P, F>(tree, xform, particles, &att, prm, &mode, &partitioner, 0..buckets);
+    }
+    let bg = *tree.background();
+    let chunk = buckets.div_ceil(tasks);
+    let (merged, min_count, max_count) = (0..tasks)
+        .into_par_iter()
+        .map(|t| {
+            let mut sub = Tree::<V>::new(bg);
+            let range = (t * chunk).min(buckets)..((t + 1) * chunk).min(buckets);
+            let (mi, ma) = raster_buckets::<T, A, V, P, F>(&mut sub, xform, particles, &att, prm, &mode, &partitioner, range);
+            (sub, mi, ma)
+        })
+        .reduce_with(|(mut a, ami, ama), (b, bmi, bma)| {
+            merge_sdf::<T, A, V>(&mut a, b);
+            (a, ami + bmi, ama + bma)
+        })
+        .unwrap();
+    merge_sdf::<T, A, V>(tree, merged);
+    (min_count, max_count)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn raster_buckets<T, A, V, P, F>(
+    tree: &mut Tree<V>,
+    xform: &crate::math::Transform,
+    particles: &P,
+    att: &F,
+    prm: &RasterParams,
+    mode: &Mode,
+    partitioner: &PointPartitioner<3>,
+    buckets: std::ops::Range<usize>,
+) -> (usize, usize)
+where
+    T: P2lsValue,
+    A: Copy,
+    V: RasterValue<T, A>,
+    P: ParticleList + ?Sized,
+    F: Fn(usize) -> A,
+{
     let inv_dx = 1.0 / prm.dx;
     let (mut min_count, mut max_count) = (0usize, 0usize);
     let ignore = |r: f64, min_count: &mut usize, max_count: &mut usize| {
@@ -291,10 +412,10 @@ where
         }
     };
     let origin = xform.world_to_index(Vec3d::zero());
-    for n in 0..partitioner.size() {
+    for n in buckets {
         for &id in partitioner.indices(n) {
             let id = id as usize;
-            match mode {
+            match *mode {
                 Mode::Spheres => {
                     let (pos, rad) = particles.get_pos_rad(id);
                     let r = inv_dx * rad;
@@ -427,7 +548,7 @@ impl<'a, T: P2lsValue, A: Value> ParticlesToLevelSet<'a, T, A> {
     fn run<P, F>(&mut self, particles: &P, att: F, mode: Mode)
     where
         P: ParticleList + ?Sized,
-        F: Fn(usize) -> A,
+        F: Fn(usize) -> A + Sync,
     {
         let prm = self.params();
         let xform = self.grid.transform().clone();
@@ -740,5 +861,99 @@ mod tests {
         assert!(mask.get_value(&Coord::new(0, -5, 0)));
         assert!(mask.get_value(&Coord::new(10, 0, 0)));
         assert!(!mask.get_value(&Coord::new(5, 0, 0)));
+    }
+
+    /// Rasterize with the given number of threads, into a grid with existing content, with
+    /// and without attribute transfer. Returns (plain level set, level set, attributes).
+    fn rasterize_with_threads(pl: &SimpleParticleList, threads: usize, trails: bool) -> [Tree<f32>; 2] {
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
+        let new_grid = || {
+            let mut grid = Grid::<f32>::new(0.3).with_transform(Transform::linear(0.1));
+            // Existing content, including "inside" values above -background and an inactive
+            // positive value: the merge must treat it like the sequential order does.
+            grid.tree_mut().fill(&CoordBBox::from_coords(-25, -25, -25, -5, -5, -5), -0.05, false);
+            grid.tree_mut().set_value(&Coord::new(5, 5, 5), 0.05);
+            grid.tree_mut().set_value_off(&Coord::new(6, 5, 5), 0.02);
+            grid
+        };
+        pool.install(|| {
+            let mut plain = new_grid();
+            let mut p2ls = ParticlesToLevelSet::new(&mut plain);
+            if trails {
+                p2ls.rasterize_trails(pl, 1.0);
+            } else {
+                p2ls.rasterize_spheres(pl);
+            }
+            p2ls.finalize(false);
+            [plain.tree().clone(), Tree::new(0.0)]
+        })
+    }
+
+    fn rasterize_att_with_threads(pl: &SimpleParticleList, threads: usize, trails: bool) -> (Tree<f32>, Tree<i32>) {
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
+        pool.install(|| {
+            let mut grid = Grid::<f32>::new(0.3).with_transform(Transform::linear(0.1));
+            let mut p2ls = ParticlesToLevelSet::<f32, i32>::with_attributes(&mut grid);
+            if trails {
+                p2ls.rasterize_trails_att(pl, 1.0);
+            } else {
+                p2ls.rasterize_spheres_att(pl);
+            }
+            p2ls.finalize(false);
+            let att = p2ls.take_attribute_grid().unwrap();
+            (grid.tree().clone(), att.tree().clone())
+        })
+    }
+
+    fn assert_same_tree<T: Value>(a: &Tree<T>, b: &Tree<T>) {
+        assert_eq!(a.leaf_count(), b.leaf_count());
+        for (la, lb) in a.leaves().zip(b.leaves()) {
+            assert_eq!(la.origin(), lb.origin());
+            assert_eq!(la.value_mask(), lb.value_mask(), "mask at {:?}", la.origin());
+            assert_eq!(la.buffer(), lb.buffer(), "values at {:?}", la.origin());
+        }
+        let tiles = |t: &Tree<T>| {
+            let mut v = Vec::new();
+            t.visit_tiles(&mut |b, x, on, l| v.push((b, *x, on, l)));
+            v
+        };
+        assert_eq!(tiles(a), tiles(b));
+    }
+
+    #[test]
+    fn parallel_matches_sequential() {
+        // Overlapping particles of varied radii, so merging has inside voxels, ties and
+        // distances to resolve across task boundaries.
+        let mut pl = SimpleParticleList::default();
+        let mut seed = 7u64;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 11) as f64 / (1u64 << 53) as f64
+        };
+        for _ in 0..3000 {
+            pl.positions.push(Vec3d::new(rnd() * 4.0 - 2.0, rnd() * 4.0 - 2.0, rnd() * 4.0 - 2.0));
+            pl.radii.push(0.1 + rnd() * 0.4);
+            pl.velocities.push(Vec3d::new(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5));
+        }
+        // Mirror-image pairs are exactly equidistant from the voxels on the plane x = 0, so
+        // their distances tie (with different attributes) across buckets and tasks.
+        for i in 0..40 {
+            let (y, z, r) = (rnd() * 4.0 - 2.0, rnd() * 4.0 - 2.0, 0.2 + rnd() * 0.3);
+            for x in [r * 0.8, -r * 0.8] {
+                pl.positions.push(Vec3d::new(x, y, z));
+                pl.radii.push(r);
+                pl.velocities.push(Vec3d::new(0.0, 0.1 * i as f64, 0.0));
+            }
+        }
+        for trails in [false, true] {
+            let [p1, _] = rasterize_with_threads(&pl, 1, trails);
+            let [p4, _] = rasterize_with_threads(&pl, 4, trails);
+            assert!(p1.active_voxel_count() > 10_000);
+            assert_same_tree(&p1, &p4);
+            let (g1, a1) = rasterize_att_with_threads(&pl, 1, trails);
+            let (g4, a4) = rasterize_att_with_threads(&pl, 4, trails);
+            assert_same_tree(&g1, &g4);
+            assert_same_tree(&a1, &a4);
+        }
     }
 }
