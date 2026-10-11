@@ -295,6 +295,9 @@ pub enum AnyGrid {
     Vec3S(Vec3SGrid),
     Vec3D(Vec3DGrid),
     Vec3I(Vec3IGrid),
+    /// A topology-only grid (OpenVDB's `MaskGrid`, tree type `"Tree_mask_5_4_3"`),
+    /// represented as a [`BoolGrid`] whose voxel values equal their active states.
+    Mask(BoolGrid),
 }
 
 /// Run an expression on the typed grid inside an [`AnyGrid`].
@@ -310,6 +313,7 @@ macro_rules! with_any_grid {
             $crate::grid::AnyGrid::Vec3S($g) => $body,
             $crate::grid::AnyGrid::Vec3D($g) => $body,
             $crate::grid::AnyGrid::Vec3I($g) => $body,
+            $crate::grid::AnyGrid::Mask($g) => $body,
         }
     };
 }
@@ -350,6 +354,31 @@ impl AnyGrid {
             AnyGrid::Vec3S(_) => Vec3SGrid::grid_type(),
             AnyGrid::Vec3D(_) => Vec3DGrid::grid_type(),
             AnyGrid::Vec3I(_) => Vec3IGrid::grid_type(),
+            AnyGrid::Mask(_) => "Tree_mask_5_4_3".to_string(),
+        }
+    }
+    /// The mask grid, if this is an [`AnyGrid::Mask`].
+    pub fn as_mask(&self) -> Option<&BoolGrid> {
+        if let AnyGrid::Mask(g) = self {
+            Some(g)
+        } else {
+            None
+        }
+    }
+    /// The mask grid, mutably, if this is an [`AnyGrid::Mask`].
+    pub fn as_mask_mut(&mut self) -> Option<&mut BoolGrid> {
+        if let AnyGrid::Mask(g) = self {
+            Some(g)
+        } else {
+            None
+        }
+    }
+    /// Convert into the mask grid, if this is an [`AnyGrid::Mask`].
+    pub fn into_mask(self) -> Option<BoolGrid> {
+        if let AnyGrid::Mask(g) = self {
+            Some(g)
+        } else {
+            None
         }
     }
 }

@@ -1,0 +1,36 @@
+file_version 224
+meta streamed bool 1
+grid a
+  type Tree_float_5_4_3
+  meta file_bbox_max vec3i 63 63 63
+  meta file_bbox_min vec3i 0 0 0
+  meta file_compression string "blosc + active values"
+  meta file_mem_bytes int64 322608
+  meta file_voxel_count int64 64
+  meta name string "a"
+  background 0000000000000000
+  active_voxels 64
+  active_tiles 0
+  leaf_count 8
+  bbox 0 0 0 63 63 63
+  active_hash c948e7e04861c8f4
+  leaf_hash dbb937bf093aba89
+  tile_hash a7f0c21b3e2ab511
+  transform 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
+grid b
+  type Tree_int32_5_4_3
+  meta file_bbox_max vec3i -5 5 -5
+  meta file_bbox_min vec3i -5 5 -5
+  meta file_compression string "blosc + active values"
+  meta file_mem_bytes int64 307600
+  meta file_voxel_count int64 1
+  meta name string "b"
+  background 0000000000000000
+  active_voxels 1
+  active_tiles 0
+  leaf_count 1
+  bbox -5 5 -5 -5 5 -5
+  active_hash 3987876dd26b3272
+  leaf_hash 3c744921fad56cb9
+  tile_hash b6bcfc6ed95ca657
+  transform 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 3ff0000000000000
