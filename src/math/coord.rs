@@ -48,17 +48,17 @@ impl Coord {
     /// Round each component of a floating-point position to the nearest integer.
     #[inline]
     pub fn round(xyz: Vec3d) -> Self {
-        Coord([(xyz[0] + 0.5).floor() as i32, (xyz[1] + 0.5).floor() as i32, (xyz[2] + 0.5).floor() as i32])
+        Coord([floor_to_i32(xyz[0] + 0.5), floor_to_i32(xyz[1] + 0.5), floor_to_i32(xyz[2] + 0.5)])
     }
     /// Floor each component of a floating-point position.
     #[inline]
     pub fn floor(xyz: Vec3d) -> Self {
-        Coord([xyz[0].floor() as i32, xyz[1].floor() as i32, xyz[2].floor() as i32])
+        Coord([floor_to_i32(xyz[0]), floor_to_i32(xyz[1]), floor_to_i32(xyz[2])])
     }
     /// Ceil each component of a floating-point position.
     #[inline]
     pub fn ceil(xyz: Vec3d) -> Self {
-        Coord([xyz[0].ceil() as i32, xyz[1].ceil() as i32, xyz[2].ceil() as i32])
+        Coord([ceil_to_i32(xyz[0]), ceil_to_i32(xyz[1]), ceil_to_i32(xyz[2])])
     }
     #[inline]
     pub fn offset_by(&self, dx: i32, dy: i32, dz: i32) -> Self {
@@ -430,6 +430,29 @@ impl Iterator for CoordBBoxIter {
     }
 }
 
+/// `x.floor() as i32`, without a call to `floor` (the baseline x86-64 target has no
+/// rounding instruction): truncate, then step down for negative non-integers.
+#[inline]
+pub fn floor_to_i32(x: f64) -> i32 {
+    let i = x as i32;
+    if (i as f64) > x && i != i32::MIN {
+        i - 1
+    } else {
+        i
+    }
+}
+
+/// `x.ceil() as i32`, without a call to `ceil` (see [`floor_to_i32`]).
+#[inline]
+pub fn ceil_to_i32(x: f64) -> i32 {
+    let i = x as i32;
+    if (i as f64) < x && i != i32::MAX {
+        i + 1
+    } else {
+        i
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,5 +476,24 @@ mod tests {
         let b = CoordBBox::from_coords(0, 0, 0, 7, 3, 3);
         let (l, r) = b.split().unwrap();
         assert_eq!(l.volume() + r.volume(), b.volume());
+    }
+
+    #[test]
+    fn floor_ceil_to_i32_match_std() {
+        let mut vals = vec![
+            0.0, -0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.999999, -2.999999, 1e-300, -1e-300,
+            2147483647.0, 2147483647.5, -2147483648.0, -2147483648.5, -2147483649.0, 3e9, -3e9,
+            1e300, -1e300, f64::INFINITY, f64::NEG_INFINITY, f64::NAN, f64::MIN_POSITIVE,
+            4503599627370495.5, -4503599627370495.5,
+        ];
+        let mut seed = 1u64;
+        for _ in 0..100_000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            vals.push(((seed >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * 1e4);
+        }
+        for x in vals {
+            assert_eq!(floor_to_i32(x), x.floor() as i32, "floor {x}");
+            assert_eq!(ceil_to_i32(x), x.ceil() as i32, "ceil {x}");
+        }
     }
 }

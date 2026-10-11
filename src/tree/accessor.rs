@@ -407,7 +407,6 @@ impl<'a, C: Node> ValueAccessorMut<'a, C> {
 #[cfg(test)]
 mod tests {
     use crate::math::Coord;
-use crate::types::Value;
     use crate::tree::FloatTree;
 
     #[test]
