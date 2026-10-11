@@ -87,6 +87,23 @@ where
     S: Fn(&'g Grid<T>) -> St + Sync + Send,
     K: Fn(&mut St, &Coord, T) -> T + Sync + Send,
 {
+    masked_leaf_voxel_pass(grid, mask, state, move |st, _, _, xyz, v| kernel(st, xyz, v))
+}
+
+/// [`masked_voxel_pass`] with a kernel that also gets the voxel's leaf (as it was before
+/// the pass) and its offset in the leaf: `kernel(state, leaf, offset, xyz, value)`.
+pub(crate) fn masked_leaf_voxel_pass<'g, T, M, St, S, K>(
+    grid: &'g Grid<T>,
+    mask: MaskSpec<'g, M>,
+    state: S,
+    kernel: K,
+) -> Vec<Vec<T>>
+where
+    T: ArithValue,
+    M: RealValue + ArithValue,
+    S: Fn(&'g Grid<T>) -> St + Sync + Send,
+    K: Fn(&mut St, &LeafNode<T>, usize, &Coord, T) -> T + Sync + Send,
+{
     par_leaf_compute(
         grid.tree(),
         || (state(grid), mask.map(|(m, lo, hi, inv)| AlphaMask::new(grid.transform(), m, lo, hi, inv))),
@@ -99,10 +116,10 @@ where
                 match alpha {
                     Some(am) => {
                         if let Some((a, b)) = am.weights(&xyz) {
-                            out[n] = v.scale(b) + kernel(st, &xyz, v).scale(a);
+                            out[n] = v.scale(b) + kernel(st, leaf, n, &xyz, v).scale(a);
                         }
                     }
-                    None => out[n] = kernel(st, &xyz, v),
+                    None => out[n] = kernel(st, leaf, n, &xyz, v),
                 }
             }
         },
