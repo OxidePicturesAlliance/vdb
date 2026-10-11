@@ -18,6 +18,7 @@ use crate::tools::tree_ops::{combine_extended, internal1_nodes, merge, topology_
 use crate::tools::value_traits::{ToolError, ToolResult, ToolValue, TreeAdapter};
 use crate::tree::{Internal2, InternalNode, LeafNode, Node, RootEntry, Tree};
 use crate::types::Value;
+use rayon::prelude::*;
 use std::collections::{BTreeSet, HashMap};
 
 // ---------------------------------------------------------------------------------------
@@ -185,11 +186,9 @@ impl<T: ToolValue, C: CsgNode<T>, const L: u32> CsgNode<T> for InternalNode<C, L
             }
         }
         if recurse {
-            for n in 0..n_values {
-                if let (Some(c), Some(oc)) = (self.child_mut(n), other.child_mut(n)) {
-                    c.csg(oc, ctx);
-                }
-            }
+            self.child_pairs_mut(other).into_par_iter().with_min_len(if C::LEVEL == 0 { 32 } else { 1 }).for_each(
+                |(c, oc)| c.csg(oc, ctx),
+            );
         }
     }
 }
@@ -207,18 +206,19 @@ fn csg_in_place<T: ToolValue>(a: &mut Tree<T>, b: &mut Tree<T>, mode: CsgMode, p
         CsgMode::Difference => csg_root_difference(a, b, &ctx),
     };
     if recurse {
-        let keys: Vec<_> = a.root().table().keys().copied().collect();
-        for key in keys {
-            let oc = match b.root_mut().table_mut().get_mut(&key) {
-                Some(RootEntry::Child(oc)) => oc,
-                _ => continue,
-            };
-            if let Some(RootEntry::Child(c)) = a.root_mut().table_mut().get_mut(&key) {
-                c.csg(oc, &ctx);
-            }
-        }
+        let mut others: HashMap<_, _> =
+            b.root_mut().table_mut().iter_mut().filter_map(|(k, e)| Some((*k, e.child_mut()?))).collect();
+        let pairs: Vec<_> = a
+            .root_mut()
+            .table_mut()
+            .iter_mut()
+            .filter_map(|(k, e)| Some((e.child_mut()?, others.remove(k)?)))
+            .collect();
+        pairs.into_par_iter().for_each(|(c, oc)| c.csg(oc, &ctx));
     }
-    b.clear();
+    // Free what is left of B in parallel.
+    let rest: Vec<_> = std::mem::take(b.root_mut().table_mut()).into_values().collect();
+    rest.into_par_iter().for_each(drop);
 }
 
 fn csg_root_union_intersection<T: ToolValue>(a: &mut Tree<T>, b: &mut Tree<T>, ctx: &CsgCtx<T>) -> bool {

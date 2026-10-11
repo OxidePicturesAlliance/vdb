@@ -119,6 +119,14 @@ impl<C: Node, const LOG2DIM: u32> InternalNode<C, LOG2DIM> {
     pub fn children_mut(&mut self) -> impl Iterator<Item = &mut C> + '_ {
         self.children.iter_mut().filter_map(|c| c.as_deref_mut())
     }
+    /// The pairs of children that occupy the same slot in `self` and in `other`.
+    pub fn child_pairs_mut<'a>(&'a mut self, other: &'a mut Self) -> Vec<(&'a mut C, &'a mut C)> {
+        self.children
+            .iter_mut()
+            .zip(other.children.iter_mut())
+            .filter_map(|(a, b)| Some((a.as_deref_mut()?, b.as_deref_mut()?)))
+            .collect()
+    }
     /// Iterate over `(slot, &value, active)` for tile slots.
     pub fn tiles(&self) -> impl Iterator<Item = (usize, &C::Value, bool)> + '_ {
         (0..Self::SLOTS)
