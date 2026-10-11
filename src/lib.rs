@@ -20,6 +20,23 @@
 //! drop(acc);
 //! assert_eq!(grid.active_voxel_count(), 1);
 //! ```
+//!
+//! Building a level set and writing it to a `.vdb` file that C++ OpenVDB can read:
+//!
+//! ```
+//! use vdb::prelude::*;
+//! use vdb::tools::level_set_sphere::create_level_set_sphere;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let sphere: FloatGrid = create_level_set_sphere(1.0, Vec3f::zero(), 0.05, 3.0, true)?;
+//! let path = std::env::temp_dir().join("vdb_doctest_sphere.vdb");
+//! vdb::io::write_file(&path, &[sphere.clone().into()], &MetaMap::new())?;
+//! let (_meta, grids) = vdb::io::read_file(&path)?;
+//! assert_eq!(grids[0].active_voxel_count(), sphere.active_voxel_count());
+//! # std::fs::remove_file(&path).ok();
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod grid;
 pub mod io;
