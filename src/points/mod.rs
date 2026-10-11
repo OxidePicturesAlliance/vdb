@@ -40,6 +40,7 @@ pub mod point_group;
 pub mod point_mask;
 pub mod point_move;
 pub mod point_rasterize_sdf;
+pub mod point_rasterize_trilinear;
 pub mod point_sample;
 pub mod point_scatter;
 pub mod point_statistics;
@@ -84,6 +85,7 @@ pub use point_rasterize_sdf::{
     rasterize_smooth_spheres, rasterize_smooth_spheres_varying, rasterize_spheres, rasterize_spheres_varying,
     LEVEL_SET_HALF_WIDTH,
 };
+pub use point_rasterize_trilinear::{rasterize_trilinear, rasterize_trilinear_staggered, TrilinearSource};
 pub use point_sample::{
     box_sample, point_sample, quadratic_sample, sample_grid, sample_grid_auto, SampleSource, SampleTarget, SampledValue,
 };

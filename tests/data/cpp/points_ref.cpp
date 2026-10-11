@@ -15,6 +15,7 @@
 #include <openvdb/points/PointGroup.h>
 #include <openvdb/points/PointScatter.h>
 #include <openvdb/points/PointRasterizeSDF.h>
+#include <openvdb/points/PointRasterizeTrilinear.h>
 
 #include <cstdint>
 #include <cstdio>
@@ -272,16 +273,25 @@ int gen(const std::string& dir)
     // Level sets rasterized from points (mirrored by rasterize_sdf_matches_cpp in tests/points.rs).
     {
         PointDataGrid::Ptr pts = makeGrid<NullCodec>("attrs", true);
-        FloatGrid::Ptr spheres = rasterizeSpheres(*pts, /*radius=*/0.3, /*halfband=*/3.0);
+        FloatGrid::Ptr spheres = rasterizeSpheres(*pts, /*radius=*/0.3, /*halfband=*/2.0);
         spheres->setName("spheres");
         FloatGrid::Ptr varying = rasterizeSpheres(*pts, "density", /*scale=*/0.02, /*halfband=*/2.0);
         varying->setName("spheres_varying");
-        FloatGrid::Ptr smooth = rasterizeSmoothSpheres(*pts, /*radius=*/0.3, /*search=*/0.6, /*halfband=*/3.0);
+        FloatGrid::Ptr smooth = rasterizeSmoothSpheres(*pts, /*radius=*/0.3, /*search=*/0.6, /*halfband=*/2.0);
         smooth->setName("smooth");
         FloatGrid::Ptr smoothVarying =
             rasterizeSmoothSpheres(*pts, "density", /*scale=*/0.02, /*search=*/0.5, /*halfband=*/2.0);
         smoothVarying->setName("smooth_varying");
-        write(dir + "/points_sdf.vdb", {spheres, varying, smooth, smoothVarying},
+        // Trilinear rasterization (mirrored by rasterize_trilinear_matches_cpp).
+        FloatGrid::Ptr trilinear = FloatGrid::create(
+            rasterizeTrilinear</*staggered=*/false, float>(pts->tree(), "density"));
+        trilinear->setName("trilinear");
+        trilinear->setTransform(pts->transform().copy());
+        Vec3SGrid::Ptr staggered = Vec3SGrid::create(
+            rasterizeTrilinear</*staggered=*/true, Vec3f>(pts->tree(), "v"));
+        staggered->setName("staggered");
+        staggered->setTransform(pts->transform().copy());
+        write(dir + "/points_sdf.vdb", {spheres, varying, smooth, smoothVarying, trilinear, staggered},
             io::COMPRESS_BLOSC | io::COMPRESS_ACTIVE_MASK);
     }
 

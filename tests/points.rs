@@ -466,14 +466,35 @@ fn rasterize_sdf_matches_cpp() {
     let (_, cpp) = io::read_file(data("points").join("points_sdf.vdb")).unwrap();
     let cpp = |name: &str| cpp.iter().find(|g| g.name() == name).unwrap().as_float().unwrap().clone();
     let pts = read_points("points_attrs", "attrs");
-    let spheres = rasterize_spheres(&pts, 0.3, 3.0, None, &NullFilter).unwrap();
+    let spheres = rasterize_spheres(&pts, 0.3, 2.0, None, &NullFilter).unwrap();
     assert_same_sdf(&spheres, &cpp("spheres"), 1e-6, "spheres");
     let varying = rasterize_spheres_varying(&pts, "density", 0.02, 2.0, None, &NullFilter).unwrap();
     assert_same_sdf(&varying, &cpp("spheres_varying"), 1e-6, "spheres_varying");
-    let smooth = rasterize_smooth_spheres(&pts, 0.3, 0.6, 3.0, None, &NullFilter).unwrap();
+    let smooth = rasterize_smooth_spheres(&pts, 0.3, 0.6, 2.0, None, &NullFilter).unwrap();
     assert_same_sdf(&smooth, &cpp("smooth"), 1e-5, "smooth");
     let smooth_varying = rasterize_smooth_spheres_varying(&pts, "density", 0.02, 0.5, 2.0, None, &NullFilter).unwrap();
     assert_same_sdf(&smooth_varying, &cpp("smooth_varying"), 1e-5, "smooth_varying");
+}
+
+/// Trilinear rasterization matches OpenVDB's (`rasterizeTrilinear`).
+#[test]
+fn rasterize_trilinear_matches_cpp() {
+    let (_, cpp) = io::read_file(data("points").join("points_sdf.vdb")).unwrap();
+    let pts = read_points("points_attrs", "attrs");
+    let cell = rasterize_trilinear::<f32, _>(pts.tree(), "density", &NullFilter).unwrap();
+    let expected = cpp.iter().find(|g| g.name() == "trilinear").unwrap().as_float().unwrap();
+    assert_eq!(cell.active_voxel_count(), expected.active_voxel_count());
+    for (c, v) in cell.active_voxels() {
+        let w = expected.get_value(&c);
+        assert!((v - w).abs() <= 1e-5 * w.abs().max(1.0), "{:?}: {} vs {}", c, v, w);
+    }
+    let staggered = rasterize_trilinear_staggered::<Vec3f, _>(pts.tree(), "v", &NullFilter).unwrap();
+    let expected = cpp.iter().find(|g| g.name() == "staggered").unwrap().as_vec3s().unwrap();
+    assert_eq!(staggered.active_voxel_count(), expected.active_voxel_count());
+    for (c, v) in staggered.active_voxels() {
+        let w = expected.get_value(&c);
+        assert!((v - w).abs().max_component() <= 1e-5 * w.abs().max_component().max(1.0), "{:?}", c);
+    }
 }
 
 #[test]
