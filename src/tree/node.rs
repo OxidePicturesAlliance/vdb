@@ -4,6 +4,13 @@ use super::leaf::LeafNode;
 use crate::math::{Coord, CoordBBox};
 use crate::types::Value;
 
+/// Result of a single descent toward a voxel: the leaf containing it, or the tile that
+/// covers it (with the tile's active state and its extent in voxels per axis).
+pub enum Lookup<'a, T: Value> {
+    Leaf(&'a LeafNode<T>),
+    Tile { value: &'a T, active: bool, dim: i32 },
+}
+
 /// Interface shared by [`LeafNode`] and [`InternalNode`](super::InternalNode).
 ///
 /// Nodes form a fixed-depth hierarchy; the trait's associated constants describe the node's
@@ -41,6 +48,8 @@ pub trait Node: Clone + Send + Sync + 'static {
     fn probe_value(&self, xyz: &Coord) -> (Self::Value, bool) {
         (*self.get_value(xyz), self.is_value_on(xyz))
     }
+    /// Descend to the leaf containing `xyz`, or to the tile covering it.
+    fn lookup(&self, xyz: &Coord) -> Lookup<'_, Self::Value>;
     /// The tree level at which the value at `xyz` is stored (0 = leaf voxel).
     fn get_value_level(&self, xyz: &Coord) -> u32;
 

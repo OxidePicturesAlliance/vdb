@@ -15,7 +15,7 @@ pub mod value_source;
 pub use accessor::{ValueAccessor, ValueAccessorMut};
 pub use internal::InternalNode;
 pub use leaf::LeafNode;
-pub use node::Node;
+pub use node::{Lookup, Node};
 pub use root::{RootEntry, RootNode};
 pub use tree::{
     BoolTree, DoubleTree, FloatTree, Int32Tree, Int64Tree, Internal1, Internal2, Tree, TreeBase, ValueItem, Vec3DTree,

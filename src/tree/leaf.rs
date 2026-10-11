@@ -188,6 +188,10 @@ impl<T: Value> Node for LeafNode<T> {
         self.value_mask.is_on(Self::coord_to_offset(xyz))
     }
     #[inline]
+    fn lookup(&self, _xyz: &Coord) -> super::node::Lookup<'_, T> {
+        super::node::Lookup::Leaf(self)
+    }
+    #[inline]
     fn get_value_level(&self, _xyz: &Coord) -> u32 {
         0
     }

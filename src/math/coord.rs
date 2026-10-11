@@ -96,6 +96,11 @@ impl Coord {
     pub fn max_index(&self) -> usize {
         Vec3i::from(self.0).max_index()
     }
+    /// Bitwise-and every component with `mask` (`align_down(dim)` is `align_mask(!(dim - 1))`).
+    #[inline]
+    pub fn align_mask(&self, mask: i32) -> Coord {
+        Coord([self.0[0] & mask, self.0[1] & mask, self.0[2] & mask])
+    }
     /// Mask off the low bits: `self & !(dim - 1)` component-wise, where `dim` is a power of 2.
     #[inline]
     pub fn align_down(&self, dim: i32) -> Coord {

@@ -5,6 +5,11 @@ use super::node::Node;
 use crate::math::{Coord, CoordBBox};
 use crate::types::Value;
 use crate::util::NodeMask;
+use rayon::prelude::*;
+
+/// Internal nodes with at least this many children process them in parallel (only nodes
+/// whose children are internal nodes themselves, so each task has enough work).
+const PAR_MIN_CHILDREN: usize = 4;
 
 /// An internal node with `2^(3*LOG2DIM)` slots, each holding either a child node or a tile
 /// value (a constant value covering the whole child-sized region).
@@ -23,7 +28,17 @@ impl<C: Node, const LOG2DIM: u32> Clone for InternalNode<C, LOG2DIM> {
             child_mask: self.child_mask.clone(),
             value_mask: self.value_mask.clone(),
             values: self.values.clone(),
-            children: self.children.clone(),
+            children: if self.par_children() {
+                let slots: Vec<usize> = self.child_mask.iter_on().collect();
+                let cloned: Vec<Option<Box<C>>> = slots.par_iter().map(|&n| self.children[n].clone()).collect();
+                let mut children: Box<[Option<Box<C>>]> = (0..Self::SLOTS).map(|_| None).collect();
+                for (n, c) in slots.into_iter().zip(cloned) {
+                    children[n] = c;
+                }
+                children
+            } else {
+                self.children.clone()
+            },
         }
     }
 }
@@ -133,6 +148,21 @@ impl<C: Node, const LOG2DIM: u32> InternalNode<C, LOG2DIM> {
         }
     }
 
+    /// True if work over the children is worth splitting across threads.
+    #[inline]
+    fn par_children(&self) -> bool {
+        C::LEVEL >= 1 && self.child_mask.count_on() as usize >= PAR_MIN_CHILDREN
+    }
+    /// Sum `f` over the children, in parallel when worthwhile.
+    fn sum_children<R: Send + std::iter::Sum<R>>(&self, f: impl Fn(&C) -> R + Sync + Send) -> R {
+        if self.par_children() {
+            let children: Vec<&C> = self.children().map(|(_, c)| c).collect();
+            children.into_par_iter().map(&f).sum()
+        } else {
+            self.children().map(|(_, c)| f(c)).sum()
+        }
+    }
+
     /// Return the child at slot `n`, creating it from the tile there if needed.
     fn touch_child(&mut self, n: usize) -> &mut C {
         if self.children[n].is_none() {
@@ -177,6 +207,14 @@ impl<C: Node, const LOG2DIM: u32> Node for InternalNode<C, LOG2DIM> {
         match &self.children[n] {
             Some(c) => c.is_value_on(xyz),
             None => self.value_mask.is_on(n),
+        }
+    }
+    #[inline]
+    fn lookup(&self, xyz: &Coord) -> super::node::Lookup<'_, C::Value> {
+        let n = Self::coord_to_offset(xyz);
+        match &self.children[n] {
+            Some(c) => c.lookup(xyz),
+            None => super::node::Lookup::Tile { value: &self.values[n], active: self.value_mask.is_on(n), dim: C::DIM },
         }
     }
     fn get_value_level(&self, xyz: &Coord) -> u32 {
@@ -375,7 +413,7 @@ impl<C: Node, const LOG2DIM: u32> Node for InternalNode<C, LOG2DIM> {
     }
     fn active_voxel_count(&self) -> u64 {
         let tiles = self.value_mask.count_on() as u64 * C::NUM_VOXELS;
-        tiles + self.children().map(|(_, c)| c.active_voxel_count()).sum::<u64>()
+        tiles + self.sum_children(|c| c.active_voxel_count())
     }
     fn inactive_voxel_count(&self) -> u64 {
         let mut tiles = 0u64;
@@ -384,13 +422,13 @@ impl<C: Node, const LOG2DIM: u32> Node for InternalNode<C, LOG2DIM> {
                 tiles += C::NUM_VOXELS;
             }
         }
-        tiles + self.children().map(|(_, c)| c.inactive_voxel_count()).sum::<u64>()
+        tiles + self.sum_children(|c| c.inactive_voxel_count())
     }
     fn active_leaf_voxel_count(&self) -> u64 {
-        self.children().map(|(_, c)| c.active_leaf_voxel_count()).sum()
+        self.sum_children(|c| c.active_leaf_voxel_count())
     }
     fn inactive_leaf_voxel_count(&self) -> u64 {
-        self.children().map(|(_, c)| c.inactive_leaf_voxel_count()).sum()
+        self.sum_children(|c| c.inactive_leaf_voxel_count())
     }
     fn active_tile_count(&self) -> u64 {
         self.value_mask.count_on() as u64 + self.children().map(|(_, c)| c.active_tile_count()).sum::<u64>()
@@ -399,7 +437,7 @@ impl<C: Node, const LOG2DIM: u32> Node for InternalNode<C, LOG2DIM> {
         if C::LEVEL == 0 {
             self.child_count()
         } else {
-            self.children().map(|(_, c)| c.leaf_count()).sum()
+            self.sum_children(|c| c.leaf_count())
         }
     }
     fn node_count(&self, counts: &mut [usize]) {

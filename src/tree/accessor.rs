@@ -4,19 +4,41 @@
 //! spatially coherent access patterns skip most of the tree traversal.
 
 use super::leaf::LeafNode;
-use super::node::Node;
+use super::node::{Lookup, Node};
 use super::tree::TreeBase;
 use crate::math::Coord;
+use crate::types::Value;
 use std::cell::Cell;
 use std::marker::PhantomData;
 
 /// Read-only cached accessor.
+///
+/// Besides the last leaf and top-level node, it remembers the last tile (or background
+/// region) a lookup ended in, so reads inside large tiles don't descend the tree again.
 pub struct ValueAccessor<'a, C: Node> {
     tree: &'a TreeBase<C>,
     leaf_key: Cell<Coord>,
     leaf: Cell<Option<&'a LeafNode<C::Value>>>,
     node_key: Cell<Coord>,
     node: Cell<Option<&'a C>>,
+    tile: Cell<CachedTile<C::Value>>,
+}
+
+/// The tile cached by a [`ValueAccessor`]: the region `key .. key + dim`, where `mask` is
+/// `!(dim - 1)`.
+#[derive(Clone, Copy)]
+struct CachedTile<T> {
+    key: Coord,
+    mask: i32,
+    value: T,
+    active: bool,
+}
+
+impl<T: Copy> CachedTile<T> {
+    #[inline]
+    fn hit(&self, xyz: &Coord) -> bool {
+        xyz.align_mask(self.mask) == self.key
+    }
 }
 
 impl<'a, C: Node> Clone for ValueAccessor<'a, C> {
@@ -27,6 +49,7 @@ impl<'a, C: Node> Clone for ValueAccessor<'a, C> {
             leaf: self.leaf.clone(),
             node_key: self.node_key.clone(),
             node: self.node.clone(),
+            tile: self.tile.clone(),
         }
     }
 }
@@ -39,7 +62,13 @@ impl<'a, C: Node> ValueAccessor<'a, C> {
             leaf: Cell::new(None),
             node_key: Cell::new(Coord::max_coord()),
             node: Cell::new(None),
+            tile: Cell::new(Self::no_tile()),
         }
+    }
+    #[inline]
+    fn no_tile() -> CachedTile<C::Value> {
+        // Every coordinate masks to the origin, which never equals the key: no hits.
+        CachedTile { key: Coord::max_coord(), mask: 0, value: C::Value::zero(), active: false }
     }
     pub fn tree(&self) -> &'a TreeBase<C> {
         self.tree
@@ -47,7 +76,9 @@ impl<'a, C: Node> ValueAccessor<'a, C> {
     /// Drop all cached nodes.
     pub fn clear(&self) {
         self.leaf.set(None);
+        self.leaf_key.set(Coord::max_coord());
         self.node.set(None);
+        self.tile.set(Self::no_tile());
     }
 
     #[inline]
@@ -82,35 +113,60 @@ impl<'a, C: Node> ValueAccessor<'a, C> {
         Some(l)
     }
 
+    /// Find the leaf containing `xyz`, or the value and state of the tile covering it,
+    /// with a single descent, caching whichever is found.
+    #[inline]
+    fn lookup(&self, xyz: &Coord) -> Result<&'a LeafNode<C::Value>, (C::Value, bool)> {
+        if let Some(l) = self.cached_leaf(xyz) {
+            return Ok(l);
+        }
+        self.lookup_slow(xyz)
+    }
+    #[inline]
+    fn lookup_slow(&self, xyz: &Coord) -> Result<&'a LeafNode<C::Value>, (C::Value, bool)> {
+        let t = self.tile.get();
+        if t.hit(xyz) {
+            return Err((t.value, t.active));
+        }
+        let (value, active, dim) = match self.top_node(xyz) {
+            Some(n) => match n.lookup(xyz) {
+                Lookup::Leaf(l) => {
+                    self.leaf_key.set(l.origin());
+                    self.leaf.set(Some(l));
+                    return Ok(l);
+                }
+                Lookup::Tile { value, active, dim } => (*value, active, dim),
+            },
+            None => {
+                let (v, on) = self.tree.root().probe_value(xyz);
+                (v, on, C::DIM)
+            }
+        };
+        let mask = !(dim - 1);
+        self.tile.set(CachedTile { key: xyz.align_mask(mask), mask, value, active });
+        Err((value, active))
+    }
+
     /// The value at `xyz`.
     #[inline]
     pub fn get_value(&self, xyz: &Coord) -> C::Value {
-        if let Some(l) = self.find_leaf(xyz) {
-            return *l.get_value(xyz);
-        }
-        match self.top_node(xyz) {
-            Some(n) => *n.get_value(xyz),
-            None => *self.tree.root().get_value(xyz),
+        match self.lookup(xyz) {
+            Ok(l) => *l.get_value(xyz),
+            Err((v, _)) => v,
         }
     }
     #[inline]
     pub fn is_value_on(&self, xyz: &Coord) -> bool {
-        if let Some(l) = self.find_leaf(xyz) {
-            return l.is_value_on(xyz);
-        }
-        match self.top_node(xyz) {
-            Some(n) => n.is_value_on(xyz),
-            None => self.tree.root().is_value_on(xyz),
+        match self.lookup(xyz) {
+            Ok(l) => l.is_value_on(xyz),
+            Err((_, on)) => on,
         }
     }
     #[inline]
     pub fn probe_value(&self, xyz: &Coord) -> (C::Value, bool) {
-        if let Some(l) = self.find_leaf(xyz) {
-            return l.probe_value(xyz);
-        }
-        match self.top_node(xyz) {
-            Some(n) => n.probe_value(xyz),
-            None => self.tree.root().probe_value(xyz),
+        match self.lookup(xyz) {
+            Ok(l) => l.probe_value(xyz),
+            Err(t) => t,
         }
     }
     pub fn probe_leaf(&self, xyz: &Coord) -> Option<&'a LeafNode<C::Value>> {
@@ -351,6 +407,7 @@ impl<'a, C: Node> ValueAccessorMut<'a, C> {
 #[cfg(test)]
 mod tests {
     use crate::math::Coord;
+use crate::types::Value;
     use crate::tree::FloatTree;
 
     #[test]
