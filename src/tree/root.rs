@@ -5,6 +5,7 @@ use super::leaf::LeafNode;
 use super::node::Node;
 use crate::math::{Coord, CoordBBox};
 use crate::types::Value;
+use rayon::prelude::*;
 use std::collections::BTreeMap;
 
 /// An entry in the root table: either a child node or a tile.
@@ -36,10 +37,18 @@ impl<C: Node> RootEntry<C> {
 }
 
 /// The root of a tree. Children are keyed by their origin, in lexicographic coordinate order.
-#[derive(Clone)]
 pub struct RootNode<C: Node> {
     table: BTreeMap<Coord, RootEntry<C>>,
     background: C::Value,
+}
+
+impl<C: Node> Clone for RootNode<C> {
+    fn clone(&self) -> Self {
+        // Children are cloned in parallel (each is itself cloned in parallel below).
+        let entries: Vec<(&Coord, &RootEntry<C>)> = self.table.iter().collect();
+        let table = entries.into_par_iter().map(|(k, e)| (*k, e.clone())).collect::<Vec<_>>().into_iter().collect();
+        RootNode { table, background: self.background }
+    }
 }
 
 impl<C: Node> Default for RootNode<C> {
@@ -386,8 +395,9 @@ impl<C: Node> RootNode<C> {
         }
     }
     pub fn active_voxel_count(&self) -> u64 {
-        self.table
-            .values()
+        let entries: Vec<&RootEntry<C>> = self.table.values().collect();
+        entries
+            .into_par_iter()
             .map(|e| match e {
                 RootEntry::Child(c) => c.active_voxel_count(),
                 RootEntry::Tile { active: true, .. } => C::NUM_VOXELS,
@@ -421,7 +431,8 @@ impl<C: Node> RootNode<C> {
             .sum()
     }
     pub fn leaf_count(&self) -> usize {
-        self.children().map(|c| c.leaf_count()).sum()
+        let children: Vec<&C> = self.children().collect();
+        children.into_par_iter().map(|c| c.leaf_count()).sum()
     }
     /// Number of nodes at each level, from leaves (index 0) up to and including the root.
     pub fn node_count(&self) -> Vec<usize> {
