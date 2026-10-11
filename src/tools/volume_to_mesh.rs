@@ -9,6 +9,7 @@
 //! Supported input value types are `f32`, `f64` and `bool` (see [`MeshValue`]).
 
 use super::volume_to_mesh_tables::{ADAPTABLE, AMBIGUOUS_FACE, EDGE_GROUP_TABLE};
+use super::tree_ops::steal_leaves;
 use crate::grid::{Grid, GridClass};
 use crate::math::{Coord, CoordBBox, Transform, Vec3d, Vec3f};
 use crate::tree::{Internal2, LeafNode, Node, Tree, ValueAccessor};
@@ -883,27 +884,58 @@ fn mask_active_tile_borders<T: MeshValue>(tree: &Tree<T>, iso: T, mask: &mut Tre
 
 pub(crate) fn identify_surface_intersecting_voxels<T: MeshValue>(tree: &Tree<T>, iso: T) -> Tree<bool> {
     let offs = VoxelOffsets::new();
-    let coords: Vec<Vec<Coord>> = tree
-        .leaf_refs()
-        .par_iter()
-        .map_init(
-            || tree.accessor(),
-            |acc, leaf| {
-                let mut out = Vec::new();
-                identify_leaf_edges(leaf, acc, &offs, iso, &mut out);
-                out
-            },
-        )
-        .collect();
-    let mut mask = Tree::<bool>::new(false);
-    {
-        let mut macc = mask.accessor_mut();
-        for c in coords.iter().flatten() {
-            macc.set_active_state(c, true);
-        }
-    }
+    // Each task marks the voxels found from a run of leaves in its own mask tree; the
+    // trees are then united pairwise (all their values are `false`, so only the active
+    // states matter).
+    let leaves = tree.leaf_refs();
+    // A few runs per thread: each mask tree has its own (large) top-level nodes.
+    let run = leaves.len().div_ceil(rayon::current_num_threads() * 8).max(64);
+    let mut mask = leaves
+        .par_chunks(run)
+        .map(|chunk| {
+            let acc = tree.accessor();
+            let mut out = Vec::new();
+            let mut mask = Tree::<bool>::new(false);
+            let mut macc = mask.accessor_mut();
+            for leaf in chunk {
+                out.clear();
+                identify_leaf_edges(leaf, &acc, &offs, iso, &mut out);
+                // Voxels of this leaf go into a local mask first; the others (one voxel
+                // below) through the accessor.
+                let origin = leaf.origin();
+                let mut local = NodeMask::<3>::new();
+                for c in &out {
+                    if c.align_down(8) == origin {
+                        local.set_on(LeafNode::<bool>::coord_to_offset(c));
+                    } else {
+                        macc.set_active_state(c, true);
+                    }
+                }
+                if !local.is_all_off() {
+                    macc.touch_leaf(&origin).value_mask_mut().union_with(&local);
+                }
+            }
+            drop(macc);
+            mask
+        })
+        .reduce_with(|mut a, mut b| {
+            union_masks(&mut a, &mut b);
+            a
+        })
+        .unwrap_or_else(|| Tree::new(false));
     mask_active_tile_borders(tree, iso, &mut mask);
     mask
+}
+
+/// Add the active voxels of `b` (a tree of leaves only, with `false` values) to `a`.
+fn union_masks(a: &mut Tree<bool>, b: &mut Tree<bool>) {
+    let mut acc = a.accessor_mut();
+    for leaf in steal_leaves(b, false) {
+        match acc.probe_leaf(&leaf.origin()) {
+            Some(l) => l.value_mask_mut().union_with(leaf.value_mask()),
+            None => acc.add_leaf(leaf),
+        }
+    }
 }
 
 fn apply_surface_mask<T: MeshValue>(
@@ -1043,7 +1075,8 @@ pub(crate) fn compute_auxiliary_data<T: MeshValue>(
     tree: &Tree<T>,
     iso: T,
 ) -> (Tree<i16>, Tree<u32>) {
-    let leaves: Vec<Option<Box<LeafNode<i16>>>> = intersection
+    #[allow(clippy::type_complexity)]
+    let leaves: Vec<Option<(Box<LeafNode<i16>>, Box<LeafNode<u32>>)>> = intersection
         .leaf_refs()
         .par_iter()
         .map_init(
@@ -1080,24 +1113,23 @@ pub(crate) fn compute_auxiliary_data<T: MeshValue>(
                         updated = true;
                     }
                 }
-                if updated {
-                    Some(Box::new(signs_node))
-                } else {
-                    None
+                if !updated {
+                    return None;
                 }
+                let mut idx = LeafNode::<u32>::new(origin, u32::MAX, false);
+                let (buf, mask) = idx.buffer_and_mask_mut();
+                mask.union_with(signs_node.value_mask());
+                for pos in signs_node.value_mask().iter_on() {
+                    buf[pos] = 0;
+                }
+                Some((Box::new(signs_node), Box::new(idx)))
             },
         )
         .collect();
     let mut sign_tree = Tree::<i16>::new(0);
     let mut index_tree = Tree::<u32>::new(u32::MAX);
-    for l in leaves.into_iter().flatten() {
-        let mut idx = LeafNode::<u32>::new(l.origin(), u32::MAX, false);
-        idx.value_mask_mut().union_with(l.value_mask());
-        let on: Vec<usize> = idx.value_mask().iter_on().collect();
-        for pos in on {
-            idx.buffer_mut()[pos] = 0;
-        }
-        index_tree.add_leaf(Box::new(idx));
+    for (l, idx) in leaves.into_iter().flatten() {
+        index_tree.add_leaf(idx);
         sign_tree.add_leaf(l);
     }
     (sign_tree, index_tree)
