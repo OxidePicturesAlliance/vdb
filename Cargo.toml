@@ -7,6 +7,10 @@ license = "MIT"
 repository = "https://github.com/OxidePicturesAlliance/vdb"
 exclude = ["pixi.toml", "pixi.lock"]
 
+# Keep the library importable as `vdb` regardless of the package name.
+[lib]
+name = "vdb"
+
 [features]
 default = ["read", "write", "nanovdb"]
 # Reading `.vdb` files and streams (and `.nvdb` files with `nanovdb`).
