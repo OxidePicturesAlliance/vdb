@@ -41,6 +41,26 @@ them and compares the output with the crate's own reading. It looks for the tool
 VDB_REF=$PWD/tests/data/cpp/vdb_ref cargo test --test io -- --ignored
 ```
 
+## OpenVDB 13.1
+
+The tools also build against OpenVDB 13.1.0 (the pixi environment in `pixi.toml`; its
+OpenVDB is built with its own half type, so link without `-lImath-3_1`, and take the
+NanoVDB headers from the `nanovdb/nanovdb` directory of the `v13.1.0` source tag):
+
+```sh
+g++ -std=c++17 -O2 -I$CONDA_PREFIX/include vdb_ref.cpp -o vdb_ref \
+    -L$CONDA_PREFIX/lib -Wl,-rpath,$CONDA_PREFIX/lib -lopenvdb -ltbb
+```
+
+With 13.1.0 tools, all three `--ignored` interop tests pass (C++ reads every file the Rust
+writer produces). Reference files regenerated with 13.1.0 have the same contents as the
+committed ones: the `vdb_ref` and `points_ref` dumps differ only in their first line
+(13.1 writes file format 225, `OPENVDB_FILE_VERSION_HALF_GRID`, instead of 224), and the
+`.nvdb` files are byte-identical (13.1.0 ships NanoVDB 32.9.2). Against regenerated files the
+whole suite passes once the version expectations in `tests/io.rs` (`sphere_level_set`,
+`file_versions_222_and_223`, `rewrite_reference_files`) are changed to 225 / 13.1. The
+committed files stay at 10.0.1 so the tests keep covering format 224.
+
 ## NanoVDB reference files (`nanovdb_ref.cpp`)
 
 The files in `tests/data/nanovdb` were written by `nanovdb_ref.cpp` with the header-only
